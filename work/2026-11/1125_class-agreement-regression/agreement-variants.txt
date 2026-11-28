@@ -1,0 +1,69 @@
+# GPU (RTX 4070 Laptop, driver 621.40) against the canonical lavapipe (llvmpipe LLVM 20.1.2, mesa-vulkan-drivers 25.2.8-0ubuntu0.24.04.5, WSL 2)
+# main 459f46d2 (crates 2904ed01) plus the DBG switch in switches/DBG_SNAP.diff; ticks: the 2026-11-26 batch's tick set per film
+# columns: ticks compared, ticks differing, mean differing index-plane pixels per tick, largest@tick, ticks over 500
+== (no switch)
+ctry      ticks=1320 differing=1289 mean=8.89 max=56@162 hot=0
+intro     ticks=3807 differing=2243 mean=12.35 max=166@1095 hot=0
+land      ticks=1123 differing=1123 mean=50.08 max=715@531 hot=6
+balloon   ticks=1179 differing=1155 mean=54.60 max=298@720 hot=0
+traintnl  ticks=1222 differing=1082 mean=8.39 max=75@929 hot=0
+bomb      ticks=3719 differing=3416 mean=20.89 max=149@3060 hot=0
+location  ticks=8251 differing=7501 mean=7.59 max=110@1169 hot=0
+== DBG_SNAP=off
+ctry      ticks=1320 differing=1218 mean=3.12 max=14@861 hot=0
+intro     ticks=3807 differing=2035 mean=2.09 max=25@3044 hot=0
+land      ticks=1123 differing=1043 mean=5.22 max=31@589 hot=0
+balloon   ticks=1179 differing=1120 mean=4.15 max=17@1163 hot=0
+traintnl  ticks=1222 differing=1148 mean=3.62 max=20@1135 hot=0
+bomb      ticks=3719 differing=3308 mean=8.43 max=77@2272 hot=0
+location  ticks=8251 differing=7494 mean=6.22 max=359@780 hot=0
+== DBG_SNAP=5,3
+land      ticks=1123 differing=1011 mean=34.11 max=762@525 hot=9
+balloon   ticks=1179 differing=894 mean=19.89 max=445@809 hot=0
+== DBG_SLIDE_RATIO=4
+land      ticks=1123 differing=1123 mean=50.07 max=715@531 hot=6
+balloon   ticks=1179 differing=1155 mean=54.58 max=298@720 hot=0
+== DBG_SNAP=5,3 DBG_SLIDE_RATIO=4
+land      ticks=1123 differing=1011 mean=34.10 max=762@525 hot=9
+balloon   ticks=1179 differing=894 mean=19.88 max=445@809 hot=0
+== GPU against GPU: (no switch) vs DBG_SNAP=off, then vs DBG_SNAP=5,3
+land      ticks=1123 differing=1123 mean=2087.21 max=4003@564 hot=1123
+balloon   ticks=1179 differing=1179 mean=2853.56 max=6716@702 hot=1114
+land      ticks=1123 differing=1123 mean=243.00 max=1057@531 hot=35
+balloon   ticks=1179 differing=1179 mean=176.92 max=764@1093 hot=8
+
+# Layer pairs of the differing pixels (GPU layer, lavapipe layer), edge_share: share with a 4-neighbour of another index on either class; rows/20 and cols/40: pixel counts by 20-row and 40-column bin
+== variant 0, land 525-532
+land: ticks=8 diff_px=4389 mean=548.62 edge_share=0.998 same_layer=0.121
+  layer pairs (gpu,lav): [(('none', 'actor'), 1583), (('terrain', 'actor'), 1000), (('actor', 'actor'), 584), (('actor', 'none'), 552), (('actor', 'terrain'), 397), (('prop', 'actor'), 119), (('ocean', 'actor'), 80), (('actor', 'prop'), 39)]
+  actor on exactly one: 3799
+  rows/20: [(2, 55), (3, 2408), (4, 1921), (6, 1), (7, 1), (8, 3)]
+  cols/40: [(0, 93), (1, 25), (2, 43), (3, 61), (4, 214), (5, 507), (6, 1296), (7, 2150)]
+== variant 0, land 520-540
+land: ticks=21 diff_px=8236 mean=392.19 edge_share=0.999 same_layer=0.139
+  layer pairs (gpu,lav): [(('none', 'actor'), 2592), (('terrain', 'actor'), 2359), (('actor', 'actor'), 1258), (('actor', 'terrain'), 900), (('actor', 'none'), 717), (('prop', 'actor'), 213), (('ocean', 'actor'), 96), (('actor', 'prop'), 59)]
+  actor on exactly one: 6967
+  rows/20: [(0, 1), (2, 55), (3, 3830), (4, 4339), (6, 2), (7, 2), (8, 5), (9, 2)]
+  cols/40: [(0, 665), (1, 270), (2, 156), (3, 197), (4, 285), (5, 1244), (6, 2434), (7, 2985)]
+== variant 5,3, land 520-540
+land: ticks=21 diff_px=8467 mean=403.19 edge_share=0.997 same_layer=0.106
+  layer pairs (gpu,lav): [(('none', 'actor'), 2865), (('terrain', 'actor'), 2690), (('actor', 'terrain'), 972), (('actor', 'actor'), 946), (('actor', 'none'), 669), (('prop', 'actor'), 261), (('actor', 'prop'), 59), (('prop', 'prop'), 3)]
+  actor on exactly one: 7516
+  rows/20: [(2, 81), (3, 3817), (4, 4558), (6, 1), (7, 1), (8, 9)]
+  cols/40: [(0, 576), (1, 240), (2, 25), (3, 107), (4, 215), (5, 1441), (6, 2742), (7, 3121)]
+== variant 0, balloon all ticks
+balloon: ticks=1179 diff_px=64372 mean=54.60 edge_share=0.998 same_layer=0.688
+  layer pairs (gpu,lav): [(('actor', 'actor'), 42676), (('prop', 'terrain'), 10237), (('terrain', 'prop'), 8507), (('prop', 'prop'), 879), (('terrain', 'terrain'), 753), (('terrain', 'actor'), 313), (('actor', 'terrain'), 309), (('none', 'actor'), 262)]
+  actor on exactly one: 1129
+  rows/20: [(0, 4196), (1, 6062), (2, 4817), (3, 5405), (4, 9663), (5, 5988), (6, 3757), (7, 7552), (8, 15144), (9, 1788)]
+  cols/40: [(0, 5772), (1, 3672), (2, 5591), (3, 13869), (4, 15751), (5, 7785), (6, 4800), (7, 7132)]
+== variant 5,3, balloon all ticks
+balloon: ticks=1179 diff_px=23453 mean=19.89 edge_share=0.989 same_layer=0.186
+  layer pairs (gpu,lav): [(('prop', 'terrain'), 9596), (('terrain', 'prop'), 9027), (('actor', 'actor'), 3499), (('prop', 'prop'), 731), (('terrain', 'actor'), 187), (('terrain', 'terrain'), 134), (('none', 'actor'), 108), (('actor', 'none'), 78)]
+  actor on exactly one: 440
+  rows/20: [(0, 1169), (1, 270), (2, 491), (3, 286), (4, 500), (5, 460), (6, 695), (7, 5008), (8, 13133), (9, 1441)]
+  cols/40: [(0, 5123), (1, 2739), (2, 411), (3, 1288), (4, 1993), (5, 678), (6, 4030), (7, 7191)]
+
+== GPU against GPU: (no switch) vs DBG_SLIDE_RATIO=4
+land      ticks=1123 differing=23 mean=0.23 max=35@1047 hot=0
+balloon   ticks=1179 differing=76 mean=0.91 max=182@925 hot=0
