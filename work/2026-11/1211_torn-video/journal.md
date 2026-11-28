@@ -150,6 +150,7 @@ Scratch scripts in the project files folder: `s2_gate.py` (pinned pages against 
   The merge accepted the shared frame 7275 (byte-identical in both runs).
 * 745 of 745 pinned `LOCATION` pages equal the stream picture at offset 0, none on a held frame, working palette equal on 745 of 745.
 
-**Verdict.** Segmented passes work on the two films tried; step 5 is done. Films past about 11,616 frames and a larger segment length are untried.
+**Verdict.** Segmented passes work on the two films tried; step 5 is done.
+Films past about 11,616 frames and a larger segment length are untried.
 
 **Lives in.** `research/playone-exe/capture-dosbox-automation.md` § 4.6.
