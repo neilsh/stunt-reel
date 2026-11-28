@@ -47,9 +47,9 @@
 
 - **Question**: with `STUNT_WORLD_STREAM=1` (`RenderOptions::world_stream`), does the scene renderer draw stores byte-identical to the baked world on the seven reference films, and what does it do to peak memory (#1092's two acceptance items)?
 - **Built**: layer 1 (#1214) carries each streamed vertex's shape word in the apex section, restages the renderer's slice lists in place, plans the world without device buffers (`GpuModel::plan_outlined`) and adds `StreamBuffers`; layer 2 draws from them.
-  With the switch on the world has no device buffer and the renderer keeps an owned copy of the mesh (`StreamSource`, `ir.vertices`, `ir.indices`, the outline list and the prop runs; no apex copy, since the world's apex is each vertex's own position); the CLI frees the scene's copy as before.
+  With the switch on the world has no device buffer and the renderer keeps an owned copy of the mesh (`StreamSource`, `ir.vertices`, `ir.indices`, the outline list, the prop runs and the rank spheres; no apex copy, since each world vertex's own apex is computed per window from those spheres by `own_apexes_of`); the CLI frees the scene's copy as before.
 - **How**:
-  - Stores: [`stream_store_check.py`](stream_store_check.py) renders each film twice with one release binary, `STUNT_WORLD_STREAM` unset then `=1`, through `parity_pipeline.render_film`, and hashes `frames`, `layers`, `palettes` and `shapes`; it fails when a render with the switch on lacks the `[stuntreel] world stream: on` line or one with it unset has it.
+  - Stores: [`stream_store_check.py`](stream_store_check.py) renders each film twice with one release binary, `STUNT_WORLD_STREAM` unset then `=1`, through `parity_pipeline.render_film`, and hashes `frames`, `layers`, `palettes` and `shapes`; it fails when a render with the switch on lacks the `[stuntreel] world stream: on` line or one with it unset has it, and when any render reports a fallback.
     Cloud lavapipe (Mesa 25.2.8 from `mesa-vulkan-drivers`), on the branch rebased onto main `a243102` (#1101 merged), `--software-only`, data from `mise run cloud-assets -- fetch --replace-unmarked`, `game-builds` and `superset-all`, one process a film.
   - Memory: [`stream_memory_check.py`](stream_memory_check.py), `LOCATION` ticks `12..=120` with `--report-memory`, three runs each, off and on, interleaved.
 - **Result**:
