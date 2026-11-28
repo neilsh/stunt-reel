@@ -96,7 +96,7 @@
 
   - Stores: all 14 film and adapter pairs hash alike (seven reference films, both adapters, `shapes.zst` included); every `mise run ab` and `mise run icount` run hashed its stores alike too.
   - The one lavapipe pair `shape-word` lost (round 2, `28,548.4` against `28,849.0 ms`, `+1.1%`) ran at the highest other load of the run (`0.092`; the others `0.037..0.071`).
-  - On the RTX 4070 both sides slowed round by round (base `9,519.1` to `10,473.7 ms`), and `shape-word` lost every pair, including the two where it ran first.
+  - On the RTX 4070 base slowed every round (`9,519.1` to `10,473.7 ms`) and `shape-word` in all but round 2 (`10,048.7` to `11,138.6 ms`), and `shape-word` lost every pair, including the two where it ran first.
   - In the counts the JIT-compiled shader code (no symbols, `???`) fell `1,770,240,116` (30 ticks) and `3,219,790,292` (60 ticks) instructions in repeat 0; the upload's new work rose by about `0.66` billion (`apex_vertices` `+441.9M`, `GpuChunk::upload` `+109.1M`, `memset` `+104.1M` on the 30-tick span), a start-up cost.
   - Callgrind with `--separate-threads` (2 repeats each, stores alike) splits the count by thread ([`rebased/callgrind-threads.md`](rebased/callgrind-threads.md)).
     The main thread, our Rust and the upload, rose `+612,819,204` (`+3.04%`) on 30 ticks and `+624,465,012` (`+3.00%`) on 60, the same amount at both lengths.
