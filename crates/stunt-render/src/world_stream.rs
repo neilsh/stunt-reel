@@ -1,16 +1,18 @@
 //! The per-frame stream of the world's visible slices.
 //!
-//! [`WorldStream::rebuild`] stages, on the CPU, the ground, base and decal slices of one frame
-//! from an unsplit [`WorldSource`], each slice's vertex window, indices, outline indices and
-//! apexes back to back, and returns slices addressing the stream. A slice of a split world is an
-//! error. Nothing draws from the stream yet.
+//! [`WorldStream::restage`] stages, on the CPU, every slice of the lists it is given from an
+//! unsplit [`WorldSource`], each slice's vertex window, indices, outline indices and apexes back
+//! to back, and rewrites each slice in place to address the stream. Each streamed vertex's apex is
+//! the 20 B [`ApexVertex`] the baked upload holds for it, its prop shape word included, so the
+//! stream needs no runs table. A slice of a split world is an error. Nothing draws from the
+//! stream yet.
 
 use std::ops::Range;
 
 use stunt_core::contracts::{SodVertex, arena_index};
 use stunt_core::world::PropRun;
 
-use crate::mesh::{GpuMeshSlice, chunk_prop_runs};
+use crate::mesh::{ApexVertex, GpuMeshSlice, apex_vertices};
 use crate::outline::Apex;
 
 /// What a stream copies from: one unsplit model's buffers, as the baked upload holds them.
@@ -24,7 +26,8 @@ pub(crate) struct WorldSource<'a> {
     pub indices: &'a [u32],
     /// The model's outline indices, into `vertices`, as the one chunk's edge buffer holds them.
     pub edges: &'a [u32],
-    /// The model's prop runs, in vertex order.
+    /// The model's prop runs, in vertex order: each streamed vertex takes the shape word of the
+    /// run that holds its source vertex.
     pub prop_runs: &'a [PropRun],
 }
 
@@ -41,46 +44,55 @@ pub(crate) struct SliceOutsideSource;
 pub(crate) struct WorldStream {
     /// The copied vertex windows, back to back.
     pub vertices: Vec<SodVertex>,
-    /// The windows' apexes, one per streamed vertex.
-    pub apex: Vec<Apex>,
+    /// The windows' apexes and prop shape words, one per streamed vertex.
+    pub apex: Vec<ApexVertex>,
     /// The slices' indices, rebased to the streamed vertices.
     pub indices: Vec<u32>,
     /// The slices' outline indices, rebased to the streamed vertices.
     pub edges: Vec<u32>,
-    /// The prop runs in streamed vertex numbering, `[first, end, shape id + 1]`: the lookup that
-    /// `ApexVertex::prop_shape` (`crate::mesh`) holds per vertex.
-    pub runs: Vec<[u32; 3]>,
-    /// The ground slices, in draw order.
-    pub ground: Vec<GpuMeshSlice>,
-    /// The base slices, in the order given.
-    pub base: Vec<GpuMeshSlice>,
-    /// The decal slices, in draw order.
-    pub decals: Vec<GpuMeshSlice>,
     /// The source vertex windows copied, in stream order.
     pub windows: Vec<Range<usize>>,
+    /// The streamed slices of the frame being restaged, before they replace the lists'.
+    pub scratch: Vec<GpuMeshSlice>,
 }
 
 impl WorldStream {
-    /// Restages the stream from `ground`, `base` and `decals`, in that order and each in the
-    /// order given, replacing the last frame's and keeping its allocations.
+    /// Restages the stream from every slice of every list in `lists`, in the order given,
+    /// replacing the last frame's and keeping its allocations, and replaces each slice with the
+    /// one that addresses the stream.
     ///
-    /// On an error the stream is left empty.
+    /// On an error the stream is left empty and the lists as they were.
     ///
     /// # Errors
     ///
     /// [`SliceOutsideSource`] when a slice does not belong to `source`.
-    pub(crate) fn rebuild(
+    pub(crate) fn restage(
         &mut self,
         source: &WorldSource<'_>,
-        ground: impl IntoIterator<Item = GpuMeshSlice>,
-        base: impl IntoIterator<Item = GpuMeshSlice>,
-        decals: impl IntoIterator<Item = GpuMeshSlice>,
+        lists: &mut [&mut Vec<GpuMeshSlice>],
     ) -> Result<(), SliceOutsideSource> {
         self.clear();
-        let staged = self.stage(source, ground, base, decals);
-        if staged.is_err() {
+        let mut streamed = std::mem::take(&mut self.scratch);
+        streamed.clear();
+        let staged = lists
+            .iter()
+            .flat_map(|list| list.iter().copied())
+            .try_for_each(|slice| {
+                let slice = self.append(source, slice)?;
+                streamed.push(slice);
+                Ok(())
+            });
+        if staged.is_ok() {
+            let mut next = streamed.iter().copied();
+            for list in lists.iter_mut() {
+                for slice in list.iter_mut() {
+                    *slice = next.next().ok_or(SliceOutsideSource)?;
+                }
+            }
+        } else {
             self.clear();
         }
+        self.scratch = streamed;
         staged
     }
 
@@ -90,34 +102,7 @@ impl WorldStream {
         self.apex.clear();
         self.indices.clear();
         self.edges.clear();
-        self.runs.clear();
-        self.ground.clear();
-        self.base.clear();
-        self.decals.clear();
         self.windows.clear();
-    }
-
-    fn stage(
-        &mut self,
-        source: &WorldSource<'_>,
-        ground: impl IntoIterator<Item = GpuMeshSlice>,
-        base: impl IntoIterator<Item = GpuMeshSlice>,
-        decals: impl IntoIterator<Item = GpuMeshSlice>,
-    ) -> Result<(), SliceOutsideSource> {
-        for slice in ground {
-            let streamed = self.append(source, slice)?;
-            self.ground.push(streamed);
-        }
-        for slice in base {
-            let streamed = self.append(source, slice)?;
-            self.base.push(streamed);
-        }
-        for slice in decals {
-            let streamed = self.append(source, slice)?;
-            self.decals.push(streamed);
-        }
-        self.runs = chunk_prop_runs(source.prop_runs, &self.windows);
-        Ok(())
     }
 
     /// Appends `slice`'s vertex window, rebased indices and rebased outline, and returns the
@@ -141,7 +126,9 @@ impl WorldStream {
             .vertices
             .get(range.clone())
             .ok_or(SliceOutsideSource)?;
-        let apex = source.apex.get(range.clone()).ok_or(SliceOutsideSource)?;
+        if source.apex.get(range.clone()).is_none() {
+            return Err(SliceOutsideSource);
+        }
 
         let streamed = GpuMeshSlice {
             chunk: 0,
@@ -162,7 +149,11 @@ impl WorldStream {
         self.indices.extend(indices.iter().map(|&at| rebase(at)));
         self.edges.extend(edges.iter().map(|&at| rebase(at)));
         self.vertices.extend_from_slice(vertices);
-        self.apex.extend_from_slice(apex);
+        self.apex.extend(apex_vertices(
+            source.apex,
+            std::slice::from_ref(&range),
+            source.prop_runs,
+        ));
         if !range.is_empty() {
             self.windows.push(range);
         }
@@ -282,6 +273,26 @@ mod tests {
         (edges.remove(0), slices)
     }
 
+    type Lists = (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>);
+
+    /// Restages `stream` from a ground, a base and a decal list, and returns the lists as they
+    /// then address the stream.
+    fn rebuild(
+        stream: &mut WorldStream,
+        source: &WorldSource<'_>,
+        ground: impl IntoIterator<Item = GpuMeshSlice>,
+        base: impl IntoIterator<Item = GpuMeshSlice>,
+        decals: impl IntoIterator<Item = GpuMeshSlice>,
+    ) -> Result<Lists, SliceOutsideSource> {
+        let mut lists: Lists = (
+            ground.into_iter().collect(),
+            base.into_iter().collect(),
+            decals.into_iter().collect(),
+        );
+        stream.restage(source, &mut [&mut lists.0, &mut lists.1, &mut lists.2])?;
+        Ok(lists)
+    }
+
     fn bytes<T: bytemuck::Pod>(values: &[T]) -> &[u8] {
         bytemuck::cast_slice(values)
     }
@@ -310,25 +321,26 @@ mod tests {
             prop_runs: &[],
         };
         let mut stream = WorldStream::default();
-        stream
-            .rebuild(
-                &source,
-                slices[..2].iter().copied(),
-                slices[2..4].iter().copied(),
-                slices[4..].iter().copied(),
-            )
-            .expect("every slice is the source's");
+        let (ground, base, decals) = rebuild(
+            &mut stream,
+            &source,
+            slices[..2].iter().copied(),
+            slices[2..4].iter().copied(),
+            slices[4..].iter().copied(),
+        )
+        .expect("every slice is the source's");
 
         assert_eq!(bytes(&stream.vertices), bytes(&ir.vertices));
-        assert_eq!(bytes(&stream.apex), bytes(&apex));
+        let baked_apex: Vec<ApexVertex> =
+            apex_vertices(&apex, std::slice::from_ref(&(0..apex.len())), &[]).collect();
+        assert_eq!(bytes(&stream.apex), bytes(&baked_apex));
         assert_eq!(bytes(&stream.indices), bytes(&ir.indices));
         assert_eq!(bytes(&stream.edges), bytes(&edges));
         // Every slice lands where the baked one is, so each draws the same index range.
-        assert_eq!(stream.ground, slices[..2]);
-        assert_eq!(stream.base, slices[2..4]);
-        assert_eq!(stream.decals, slices[4..]);
-        assert!(stream.decals.iter().all(|slice| slice.is_decal));
-        assert!(stream.runs.is_empty());
+        assert_eq!(ground, slices[..2]);
+        assert_eq!(base, slices[2..4]);
+        assert_eq!(decals, slices[4..]);
+        assert!(decals.iter().all(|slice| slice.is_decal));
     }
 
     #[test]
@@ -348,13 +360,14 @@ mod tests {
         // first; the decal.
         let (ground, base, decals) = ([slices[1]], [slices[3], slices[2]], [slices[4]]);
         let mut stream = WorldStream::default();
-        stream.rebuild(&source, ground, base, decals).expect("held");
+        let (ground, base, decals) =
+            rebuild(&mut stream, &source, ground, base, decals).expect("held");
 
         // Ground quad (4 vertices), the two-quad base node (8), a base quad (4), the decal
         // quad (4).
         assert_eq!(stream.vertices.len(), 4 + 8 + 4 + 4);
         assert_eq!(stream.apex.len(), stream.vertices.len());
-        let all: Vec<GpuMeshSlice> = [&stream.ground, &stream.base, &stream.decals]
+        let all: Vec<GpuMeshSlice> = [&ground, &base, &decals]
             .into_iter()
             .flatten()
             .copied()
@@ -408,7 +421,7 @@ mod tests {
     }
 
     #[test]
-    fn the_runs_table_follows_the_streamed_windows() {
+    fn each_streamed_vertex_carries_the_shape_word_of_its_source_vertex() {
         let fixture = Fixture::world();
         let ir = &fixture.ir;
         let apex = fixture.apex();
@@ -440,11 +453,20 @@ mod tests {
         };
         let mut stream = WorldStream::default();
         // Ground 4..8 (no run), then base 12..20, then base 8..12.
-        stream
-            .rebuild(&source, [slices[1]], [slices[3], slices[2]], [])
-            .expect("held");
-        // Streamed: ground 0..4, base 4..12 (source 12..20), base 12..16 (source 8..12).
-        assert_eq!(stream.runs, [[4, 6, 7], [6, 12, 5], [12, 16, 6]]);
+        rebuild(
+            &mut stream,
+            &source,
+            [slices[1]],
+            [slices[3], slices[2]],
+            [],
+        )
+        .expect("held");
+        let words: Vec<u32> = stream.apex.iter().map(|v| v.prop_shape).collect();
+        let expected = [0, 0, 0, 0, 7, 7, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6];
+        assert_eq!(words, expected);
+        // The apex positions are the source's, in streamed order.
+        assert_eq!(stream.apex[4].apex, apex[12]);
+        assert_eq!(stream.apex[12].apex, apex[8]);
     }
 
     #[test]
@@ -461,19 +483,18 @@ mod tests {
             prop_runs: &[],
         };
         let mut stream = WorldStream::default();
-        stream
-            .rebuild(&source, slices.iter().copied(), [], [])
-            .expect("held");
+        rebuild(&mut stream, &source, slices.iter().copied(), [], []).expect("held");
         let room = (
             stream.vertices.capacity(),
             stream.indices.capacity(),
             stream.edges.capacity(),
         );
-        stream.rebuild(&source, [slices[0]], [], []).expect("held");
+        let (ground, base, decals) =
+            rebuild(&mut stream, &source, [slices[0]], [], []).expect("held");
         assert_eq!(stream.vertices.len(), 4);
         assert_eq!(stream.indices, [0, 1, 2, 0, 2, 3]);
-        assert_eq!(stream.ground.len(), 1);
-        assert!(stream.base.is_empty() && stream.decals.is_empty());
+        assert_eq!(ground.len(), 1);
+        assert!(base.is_empty() && decals.is_empty());
         assert_eq!(
             room,
             (
@@ -518,10 +539,10 @@ mod tests {
             ..slices[0]
         };
         for bad in [past_indices, past_edges, other_chunk, rebased] {
-            let staged = stream.rebuild(&source, [slices[0]], [bad], []);
+            let staged = rebuild(&mut stream, &source, [slices[0]], [bad], []);
             assert_eq!(staged, Err(SliceOutsideSource));
             assert!(stream.vertices.is_empty() && stream.indices.is_empty());
-            assert!(stream.ground.is_empty() && stream.runs.is_empty());
+            assert!(stream.apex.is_empty() && stream.edges.is_empty());
         }
         // An outline edge joining a vertex outside the slice's triangles is not the slice's.
         let mut stray = edges.clone();
@@ -531,8 +552,78 @@ mod tests {
             ..source
         };
         assert_eq!(
-            stream.rebuild(&source, [slices[0]], [], []),
+            rebuild(&mut stream, &source, [slices[0]], [], []),
             Err(SliceOutsideSource)
         );
+    }
+
+    #[test]
+    fn restaging_lists_in_place_equals_one_rebuild_of_their_concatenation() {
+        let fixture = Fixture::world();
+        let ir = &fixture.ir;
+        let apex = fixture.apex();
+        let (edges, slices) = baked(ir);
+        let source = WorldSource {
+            vertices: &ir.vertices,
+            apex: &apex,
+            indices: &ir.indices,
+            edges: &edges,
+            prop_runs: &[],
+        };
+        // The renderer's lists: ground, base, decals, then a walk step's base and decals.
+        let mut lists = [
+            vec![slices[1]],
+            vec![slices[3], slices[2]],
+            vec![slices[4]],
+            vec![slices[2]],
+            vec![slices[4], slices[4]],
+        ];
+        let mut stream = WorldStream::default();
+        let mut refs: Vec<&mut Vec<GpuMeshSlice>> = lists.iter_mut().collect();
+        stream.restage(&source, &mut refs).expect("held");
+
+        let all: Vec<GpuMeshSlice> = [1, 3, 2, 4, 2, 4, 4].map(|n| slices[n]).to_vec();
+        let mut once = WorldStream::default();
+        let flat = rebuild(&mut once, &source, all.iter().copied(), [], [])
+            .expect("held")
+            .0;
+        assert_eq!(bytes(&stream.vertices), bytes(&once.vertices));
+        assert_eq!(bytes(&stream.apex), bytes(&once.apex));
+        assert_eq!(stream.indices, once.indices);
+        assert_eq!(stream.edges, once.edges);
+        // The lists, taken in order, are the slices of the one rebuild, each draws as before.
+        let restaged: Vec<GpuMeshSlice> = lists.iter().flatten().copied().collect();
+        assert_eq!(restaged, flat);
+        assert_eq!(
+            lists.iter().map(Vec::len).collect::<Vec<_>>(),
+            [1, 2, 1, 1, 2],
+            "no list gains or loses a slice"
+        );
+    }
+
+    #[test]
+    fn a_slice_outside_the_source_in_the_last_list_leaves_every_list_as_it_was() {
+        let fixture = Fixture::world();
+        let ir = &fixture.ir;
+        let apex = fixture.apex();
+        let (edges, slices) = baked(ir);
+        let source = WorldSource {
+            vertices: &ir.vertices,
+            apex: &apex,
+            indices: &ir.indices,
+            edges: &edges,
+            prop_runs: &[],
+        };
+        let other_chunk = GpuMeshSlice {
+            chunk: 1,
+            ..slices[0]
+        };
+        let mut lists = [vec![slices[3]], vec![slices[1], other_chunk]];
+        let before = lists.clone();
+        let mut stream = WorldStream::default();
+        let mut refs: Vec<&mut Vec<GpuMeshSlice>> = lists.iter_mut().collect();
+        assert_eq!(stream.restage(&source, &mut refs), Err(SliceOutsideSource));
+        assert!(stream.vertices.is_empty() && stream.indices.is_empty());
+        assert_eq!(lists, before);
     }
 }
