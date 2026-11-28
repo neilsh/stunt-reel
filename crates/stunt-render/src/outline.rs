@@ -8,9 +8,9 @@
 //! (`research/playone-exe/sod-vm-lines-spans.md` section 8.11). [`outlined`] gives the renderer those
 //! pixels back by drawing each polygon's outline as one-pixel screen lines, the same lines
 //! a `ZLINETO` draws (section 8.10). An outline costs four vertices and twelve indices an
-//! edge, so it is drawn this way on the shapes the renderer places per frame; the world mesh
-//! draws the [`boundary_edges`] of its props as a line list over its own vertices instead
-//! (`GpuModel::from_ir_outlined`), at two indices an edge.
+//! edge, so it is drawn this way on the shapes the renderer places per frame; the world
+//! draws the [`numbered_boundary_edges`] of its props as a line list over its own vertices
+//! instead (`GpuModel::plan_outlined`), at two indices an edge.
 
 use std::collections::HashMap;
 
@@ -208,18 +208,11 @@ fn push_edge(sink: &mut Sink<'_>, source: &[SodVertex], [p, q, r]: [u32; 3]) {
 }
 
 /// The outline of the triangles `triangles` as edges between their indices: every edge
-/// exactly one of them uses, in first-use order, each from its first corner to its second.
+/// exactly one of them uses, in first-use order, each from its first corner to its second,
+/// with the number of the triangle that uses it, counted from 0 in `triangles`, so the
+/// numbers never decrease.
 ///
 /// A triangle with a corner `outlined` rejects is skipped, neither counted nor outlined.
-pub(crate) fn boundary_edges(triangles: &[u32], outlined: impl Fn(u32) -> bool) -> Vec<[u32; 2]> {
-    numbered_boundary_edges(triangles, outlined)
-        .into_iter()
-        .map(|(edge, _)| edge)
-        .collect()
-}
-
-/// [`boundary_edges`], each edge with the number of the triangle that uses it, counted from
-/// 0 in `triangles`, so the numbers never decrease.
 pub(crate) fn numbered_boundary_edges(
     triangles: &[u32],
     outlined: impl Fn(u32) -> bool,
@@ -230,7 +223,7 @@ pub(crate) fn numbered_boundary_edges(
         .collect()
 }
 
-/// [`boundary_edges`], each edge followed by the third corner of the one triangle using it.
+/// [`numbered_boundary_edges`]' edges, each followed by the third corner of the one triangle using it.
 fn boundary_edges_with_apex(triangles: &[u32], outlined: impl Fn(u32) -> bool) -> Vec<[u32; 3]> {
     numbered_boundary_edges_with_apex(triangles, outlined)
         .into_iter()
@@ -417,11 +410,14 @@ mod tests {
     #[test]
     fn boundary_edges_skip_the_diagonal_and_rejected_triangles() {
         let ir = quad();
-        let edges = boundary_edges(&ir.indices, |_| true);
-        assert_eq!(edges, vec![[0, 1], [1, 2], [2, 3], [3, 0]]);
+        let edges = numbered_boundary_edges(&ir.indices, |_| true);
+        assert_eq!(
+            edges,
+            vec![([0, 1], 0), ([1, 2], 0), ([2, 3], 1), ([3, 0], 1)]
+        );
         // Rejecting vertex 1 drops the first triangle, so the diagonal is the second's edge.
-        let edges = boundary_edges(&ir.indices, |i| i != 1);
-        assert_eq!(edges, vec![[0, 2], [2, 3], [3, 0]]);
+        let edges = numbered_boundary_edges(&ir.indices, |i| i != 1);
+        assert_eq!(edges, vec![([0, 2], 1), ([2, 3], 1), ([3, 0], 1)]);
     }
 
     /// Asserts that `ir`'s outline corners each carry the apex of the quad triangle their edge

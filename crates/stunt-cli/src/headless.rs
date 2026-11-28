@@ -162,8 +162,8 @@ fn write_landed_pages(
 }
 
 /// Executes headless rendering without window creation; a render store records `film`, the
-/// identity of the bytes `scene` was built from. Frees `scene`'s world mesh once it is
-/// uploaded ([`FilmScene::release_world_mesh`]). `scene_times` is how long `scene` took to
+/// identity of the bytes `scene` was built from. Frees `scene`'s world mesh once the renderer
+/// has copied it ([`FilmScene::release_world_mesh`]). `scene_times` is how long `scene` took to
 /// build, for `--report-timing`.
 pub(crate) fn run_headless(
     config: &CliConfig,
@@ -172,9 +172,6 @@ pub(crate) fn run_headless(
     scene_times: SceneTimes,
 ) -> Result<(), String> {
     println!("[stuntreel] Starting headless offscreen presentation...");
-    if config.world_stream {
-        println!("[stuntreel] world stream: on");
-    }
     let memory = MemoryReport::new(config.report_memory);
     memory.stage("scene built");
     let mut timing = TimingReport::new(config.report_timing, scene_times);
@@ -290,9 +287,8 @@ pub(crate) fn run_headless(
         .map_err(|e| format!("Headless renderer failed: {e}"))?;
     timing.renderer_opened(open_started.elapsed(), renderer.upload_times());
     memory.stage("renderer opened");
-    // The world mesh is on the device now. Freeing it before the first submit keeps it from
-    // overlapping the upload's staging copies and the device buffers they fill
-    // (research/parity/lavapipe-render-workers.md section 3).
+    // The renderer holds its own copy of the world mesh for the stream now, so the scene's is
+    // freed before the first frame (research/parity/lavapipe-render-workers.md section 3).
     scene.release_world_mesh();
     memory.stage("world mesh released");
     println!(

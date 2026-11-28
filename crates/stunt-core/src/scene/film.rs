@@ -488,8 +488,9 @@ impl FilmScene {
     /// Frees the world's mesh ([`World::ir`]) and its [`World::prop_runs`], keeping everything
     /// [`Self::frame`] reads.
     ///
-    /// For a caller that has uploaded the mesh and goes on sampling frames. [`Self::world`] then
-    /// returns the world with an empty mesh, which an upload after this draws as nothing.
+    /// For a caller that has copied the mesh and goes on sampling frames. [`Self::world`] then
+    /// returns the world with an empty mesh, which a renderer opened after this draws as
+    /// nothing.
     pub fn release_world_mesh(&mut self) {
         if let Some(world) = &mut self.world {
             world.ir = SodModelIr::new(&world.ir.name);

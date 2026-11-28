@@ -1,11 +1,11 @@
 //! The per-frame stream of the world's visible slices.
 //!
-//! [`WorldStream::restage`] stages, on the CPU, every slice of the lists it is given from an
-//! unsplit [`WorldSource`], each slice's vertex window, indices, outline indices and apexes back
-//! to back, and rewrites each slice in place to address the stream. Each streamed vertex's apex is
-//! the 20 B [`ApexVertex`] the baked upload holds for it, its prop shape word included, so the
-//! stream needs no runs table. A slice of a split world is an error. The scene renderer draws the world from the stream
-//! when `RenderOptions::world_stream` is on.
+//! [`WorldStream::restage`] stages, on the CPU, every slice of the lists it is given from a
+//! [`WorldSource`], each slice's vertex window, indices, outline indices and apexes back to back,
+//! and rewrites each slice in place to address the stream. Each streamed vertex's apex is a 20 B
+//! [`ApexVertex`], its prop shape word included, so the stream needs no runs table. The scene
+//! renderer draws the world from the stream ([`crate::stream_buffers`]): no buffer holds the
+//! whole world.
 
 use stunt_core::contracts::{RankSphere, SodVertex, arena_index};
 use stunt_core::world::PropRun;
@@ -13,7 +13,7 @@ use stunt_core::world::PropRun;
 use crate::mesh::{ApexVertex, GpuMeshSlice, apex_vertices, shaped};
 use crate::outline::{Apex, own_apexes_of};
 
-/// What a stream copies from: one unsplit model's buffers, as the baked upload holds them.
+/// What a stream copies from: the world's mesh and its outline list.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct WorldSource<'a> {
     /// The model's vertices.
@@ -26,7 +26,7 @@ pub(crate) struct WorldSource<'a> {
     pub rank_spheres: &'a [RankSphere],
     /// The model's index arena, into `vertices`.
     pub indices: &'a [u32],
-    /// The model's outline indices, into `vertices`, as the one chunk's edge buffer holds them.
+    /// The model's outline indices, into `vertices` ([`GpuModel::plan_outlined`](crate::mesh::GpuModel::plan_outlined)).
     pub edges: &'a [u32],
     /// The model's prop runs, in vertex order: each streamed vertex takes the shape word of the
     /// run that holds its source vertex.
@@ -41,7 +41,7 @@ pub(crate) struct StreamSource {
     pub vertices: Vec<SodVertex>,
     /// The model's index arena, into `vertices`.
     pub indices: Vec<u32>,
-    /// The model's outline indices, as the one chunk's edge buffer would hold them.
+    /// The model's outline indices, into `vertices`.
     pub edges: Vec<u32>,
     /// The model's prop runs, in vertex order.
     pub prop_runs: Vec<PropRun>,
@@ -82,15 +82,15 @@ impl StreamSource {
     }
 }
 
-/// A slice that does not belong to the [`WorldSource`] it was streamed from: it is of another
-/// chunk or a split one, or its indices, outline or vertex window leave the source.
+/// A slice that does not belong to the [`WorldSource`] it was streamed from: its indices,
+/// outline or vertex window leave the source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SliceOutsideSource;
 
 /// The staged data of one frame's world slices, in stream order.
 ///
-/// Each list's slices address the stream, not the source: chunk 0, base vertex 0, and offsets
-/// into [`Self::indices`] and [`Self::edges`].
+/// Each list's slices address the stream, not the source: offsets into [`Self::indices`] and
+/// [`Self::edges`].
 #[derive(Debug, Default)]
 pub(crate) struct WorldStream {
     /// The copied vertex windows, back to back.
@@ -160,9 +160,6 @@ impl WorldStream {
         source: &WorldSource<'_>,
         slice: GpuMeshSlice,
     ) -> Result<GpuMeshSlice, SliceOutsideSource> {
-        if slice.chunk != 0 || slice.vertex_offset != 0 {
-            return Err(SliceOutsideSource);
-        }
         let indices = window(source.indices, slice.index_offset, slice.index_count)?;
         let edges = window(source.edges, slice.edge_offset, slice.edge_count)?;
         // The vertices the slice's triangles name, as one contiguous window: a triangle's
@@ -182,8 +179,6 @@ impl WorldStream {
         }
 
         let streamed = GpuMeshSlice {
-            chunk: 0,
-            vertex_offset: 0,
             index_offset: arena_index(self.indices.len()),
             index_count: slice.index_count,
             is_decal: slice.is_decal,
@@ -201,14 +196,12 @@ impl WorldStream {
         self.edges.extend(edges.iter().map(|&at| rebase(at)));
         self.vertices.extend_from_slice(vertices);
         match source.apex {
-            Some(apex) => self.apex.extend(apex_vertices(
-                apex,
-                std::slice::from_ref(&range),
-                source.prop_runs,
-            )),
+            Some(apex) => self
+                .apex
+                .extend(apex_vertices(apex, range, source.prop_runs)),
             None => self.apex.extend(shaped(
                 own_apexes_of(source.vertices, range.clone(), source.rank_spheres),
-                range.clone(),
+                range,
                 source.prop_runs,
             )),
         }
@@ -228,7 +221,7 @@ fn window(source: &[u32], offset: u32, count: u32) -> Result<&[u32], SliceOutsid
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mesh::{SourceSlice, plan_edges, plan_upload};
+    use crate::mesh::GpuModel;
     use stunt_core::contracts::{NodeKind, SodModelIr, VisibilityCondition};
 
     /// A model of quads, one mesh node each: every vertex has a position of its own, each
@@ -305,27 +298,12 @@ mod tests {
         }
     }
 
-    /// The baked upload of `ir`: the one chunk's outline buffer, and each node's slice.
-    fn baked(ir: &SodModelIr) -> (Vec<u32>, Vec<GpuMeshSlice>) {
-        let sources: Vec<SourceSlice> = ir
-            .meshes()
-            .map(|mesh| SourceSlice {
-                index_offset: mesh.index_offset,
-                index_count: arena_index(mesh.indices.len()),
-                is_decal: mesh.is_decal(),
-            })
-            .collect();
-        let mut plan = plan_upload(
-            ir.vertices.len(),
-            &ir.indices,
-            &sources,
-            usize::MAX,
-            usize::MAX,
-        );
-        let (mut edges, _) = plan_edges(&mut plan, ir, |_| true, &[]);
-        assert_eq!(edges.len(), 1, "an unsplit model is one chunk");
-        let slices = plan.slices.into_iter().flatten().collect();
-        (edges.remove(0), slices)
+    /// The planned world of `ir`: its outline list, and each node's slice, as a buffer holding
+    /// the whole world would draw them.
+    fn planned(ir: &SodModelIr) -> (Vec<u32>, Vec<GpuMeshSlice>) {
+        let (model, edges) = GpuModel::plan_outlined(ir, |_| true, &[]);
+        let slices = model.nodes.iter().filter_map(|node| node.mesh).collect();
+        (edges, slices)
     }
 
     type Lists = (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>);
@@ -361,11 +339,11 @@ mod tests {
     }
 
     #[test]
-    fn streaming_every_node_reproduces_the_baked_buffers_byte_for_byte() {
+    fn streaming_every_node_reproduces_the_whole_mesh_byte_for_byte() {
         let fixture = Fixture::world();
         let ir = &fixture.ir;
         let apex = fixture.apex();
-        let (edges, slices) = baked(ir);
+        let (edges, slices) = planned(ir);
         assert_eq!(slices.len(), 5);
         assert!(!edges.is_empty());
         let source = WorldSource {
@@ -387,12 +365,11 @@ mod tests {
         .expect("every slice is the source's");
 
         assert_eq!(bytes(&stream.vertices), bytes(&ir.vertices));
-        let baked_apex: Vec<ApexVertex> =
-            apex_vertices(&apex, std::slice::from_ref(&(0..apex.len())), &[]).collect();
-        assert_eq!(bytes(&stream.apex), bytes(&baked_apex));
+        let whole_apex: Vec<ApexVertex> = apex_vertices(&apex, 0..apex.len(), &[]).collect();
+        assert_eq!(bytes(&stream.apex), bytes(&whole_apex));
         assert_eq!(bytes(&stream.indices), bytes(&ir.indices));
         assert_eq!(bytes(&stream.edges), bytes(&edges));
-        // Every slice lands where the baked one is, so each draws the same index range.
+        // Every slice lands where it lies in the whole mesh, so each draws the same index range.
         assert_eq!(ground, slices[..2]);
         assert_eq!(base, slices[2..4]);
         assert_eq!(decals, slices[4..]);
@@ -404,7 +381,7 @@ mod tests {
         let fixture = Fixture::world();
         let ir = &fixture.ir;
         let apex = fixture.apex();
-        let (edges, slices) = baked(ir);
+        let (edges, slices) = planned(ir);
         let source = WorldSource {
             vertices: &ir.vertices,
             apex: Some(&apex),
@@ -438,7 +415,6 @@ mod tests {
             all.iter().map(|s| s.edge_offset).collect::<Vec<_>>(),
             [0, 8, 24, 32]
         );
-        assert!(all.iter().all(|s| s.chunk == 0 && s.vertex_offset == 0));
         // Each streamed slice draws the same vertices, whole and in order, as its source.
         let sources = [slices[1], slices[3], slices[2], slices[4]];
         for (streamed, original) in all.iter().zip(&sources) {
@@ -482,7 +458,7 @@ mod tests {
         let fixture = Fixture::world();
         let ir = &fixture.ir;
         let apex = fixture.apex();
-        let (edges, slices) = baked(ir);
+        let (edges, slices) = planned(ir);
         // Vertices 8..12 (the base quad) are shape 5, 12..14 and 14..20 shape 6 and 4.
         let runs = [
             PropRun {
@@ -532,7 +508,7 @@ mod tests {
         let fixture = Fixture::world();
         let ir = &fixture.ir;
         let apex = fixture.apex();
-        let (edges, slices) = baked(ir);
+        let (edges, slices) = planned(ir);
         let source = WorldSource {
             vertices: &ir.vertices,
             apex: Some(&apex),
@@ -570,7 +546,7 @@ mod tests {
         let fixture = Fixture::world();
         let ir = &fixture.ir;
         let apex = fixture.apex();
-        let (edges, slices) = baked(ir);
+        let (edges, slices) = planned(ir);
         let source = WorldSource {
             vertices: &ir.vertices,
             apex: Some(&apex),
@@ -590,15 +566,7 @@ mod tests {
             edge_count: 2,
             ..slices[0]
         };
-        let other_chunk = GpuMeshSlice {
-            chunk: 1,
-            ..slices[0]
-        };
-        let rebased = GpuMeshSlice {
-            vertex_offset: 4,
-            ..slices[0]
-        };
-        for bad in [past_indices, past_edges, other_chunk, rebased] {
+        for bad in [past_indices, past_edges] {
             let staged = rebuild(&mut stream, &source, [slices[0]], [bad], []);
             assert_eq!(staged, Err(SliceOutsideSource));
             assert!(stream.vertices.is_empty() && stream.indices.is_empty());
@@ -622,7 +590,7 @@ mod tests {
         let fixture = Fixture::world();
         let ir = &fixture.ir;
         let apex = fixture.apex();
-        let (edges, slices) = baked(ir);
+        let (edges, slices) = planned(ir);
         let source = WorldSource {
             vertices: &ir.vertices,
             apex: Some(&apex),
@@ -667,7 +635,7 @@ mod tests {
         let fixture = Fixture::world();
         let ir = &fixture.ir;
         let apex = fixture.apex();
-        let (edges, slices) = baked(ir);
+        let (edges, slices) = planned(ir);
         let source = WorldSource {
             vertices: &ir.vertices,
             apex: Some(&apex),
@@ -676,11 +644,11 @@ mod tests {
             edges: &edges,
             prop_runs: &[],
         };
-        let other_chunk = GpuMeshSlice {
-            chunk: 1,
+        let past_indices = GpuMeshSlice {
+            index_offset: arena_index(ir.indices.len()),
             ..slices[0]
         };
-        let mut lists = [vec![slices[3]], vec![slices[1], other_chunk]];
+        let mut lists = [vec![slices[3]], vec![slices[1], past_indices]];
         let before = lists.clone();
         let mut stream = WorldStream::default();
         let mut refs: Vec<&mut Vec<GpuMeshSlice>> = lists.iter_mut().collect();
@@ -713,7 +681,7 @@ mod tests {
         let ir = &fixture.ir;
         let own = crate::outline::own_apexes(ir);
         assert!(own.iter().any(|apex| apex[3].to_bits() == 4.0f32.to_bits()));
-        let (edges, slices) = baked(ir);
+        let (edges, slices) = planned(ir);
         let runs = [PropRun {
             first: 12,
             end: 20,

@@ -194,9 +194,6 @@ pub(crate) struct CliConfig {
     pub report_memory: bool,
     /// Print the start-up and loop times of a headless render to stderr (`--report-timing`).
     pub report_timing: bool,
-    /// Draw the world from the per-frame stream (`STUNT_WORLD_STREAM=1`), the stage B debug
-    /// switch of #999; read once when the configuration is built.
-    pub world_stream: bool,
     pub output_png: Option<PathBuf>,
     pub max_ticks: Option<usize>,
     pub video_path: Option<PathBuf>,
@@ -231,7 +228,6 @@ impl CliConfig {
             software_only: self.software_only,
             look: self.look,
             effects: self.effects,
-            world_stream: self.world_stream,
         }
     }
 
@@ -403,7 +399,6 @@ impl CliConfig {
             headless,
             report_memory,
             report_timing,
-            world_stream: env::var("STUNT_WORLD_STREAM").as_deref() == Ok("1"),
             output_png,
             max_ticks,
             video_path,

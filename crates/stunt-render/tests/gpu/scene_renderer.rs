@@ -1433,50 +1433,44 @@ fn streamed_world() -> World {
     world
 }
 
-/// Opens `scene` with the world drawn from the stream or from its baked upload.
-fn open_streaming(scene: &FilmScene, world_stream: bool) -> Option<common::TestRenderer> {
-    common::gpu_or_skip_offscreen(
-        scene,
-        Offscreen::default(),
-        RenderOptions {
-            world_stream,
-            ..RenderOptions::default()
-        },
-    )
-}
-
-/// The world drawn from the stream is the world drawn from its baked upload: colour, palette
-/// index, layer and shape planes, over ground, base, decal and outline, for two frames in a
-/// row from different cameras (the second restages and rewrites what the first wrote).
+/// The streamed world draws ground, base, decal and outline, and its prop's shape word reaches
+/// the plane; a frame from another camera restages and rewrites the stream, and the first
+/// camera again draws exactly what it drew first.
 #[test]
-fn the_streamed_world_draws_what_the_baked_one_does() {
+fn the_streamed_world_restages_each_frame() {
     common::gpu_test(|| {
         let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(streamed_world()));
-        let (Some(mut baked), Some(mut streamed)) =
-            (open_streaming(&scene, false), open_streaming(&scene, true))
+        let Some(mut test) =
+            common::gpu_or_skip_offscreen(&scene, Offscreen::default(), RenderOptions::default())
         else {
             return;
         };
-        let mut covered = Vec::new();
-        for eye_x in [0.0, 1.5, -0.7] {
+        let mut drawn = Vec::new();
+        for eye_x in [0.0, 1.5, -0.7, 0.0] {
             let mut frame = scene.frame(0.0);
             frame.view.eye[0] = eye_x;
-            let (want, got) = (planes(&baked.draw(&frame)), planes(&streamed.draw(&frame)));
-            assert!(want == got, "eye x {eye_x}: the streamed planes differ");
-            covered.push(want.2.iter().filter(|&&layer| layer != LAYER_NONE).count());
+            let got = planes(&test.draw(&frame));
+            let covered = got.2.iter().filter(|&&layer| layer != LAYER_NONE).count();
+            assert!(covered > 500, "eye x {eye_x}: {covered} pixels drawn");
             // The left prop's shape word reaches the plane.
-            assert!(got.3.contains(&41));
+            assert!(got.3.contains(&41), "eye x {eye_x}: no prop shape word");
+            drawn.push(got);
         }
-        assert!(covered.iter().all(|&n| n > 500), "{covered:?}");
+        assert!(
+            drawn[0] == drawn[3],
+            "the first camera draws differently the second time"
+        );
+        assert!(drawn[0] != drawn[1], "another camera draws the same planes");
     });
 }
 
-/// A frame whose stream outgrows the 8 MiB floor creates the buffer at its grown size, a frame that culls the world
-/// writes nothing, and the next one draws again, each as the baked world does.
+/// A frame whose stream outgrows the 8 MiB floor creates the buffer at its grown size, a frame
+/// that culls the world writes nothing and draws none of it, and the next one draws again what
+/// the first drew.
 #[test]
 fn the_stream_buffer_grows_and_the_world_can_leave_the_view() {
     common::gpu_test(|| {
-        // 300,000 small triangles in a grid across the view: 900,000 vertices of 44 B in the
+        // 300,000 small triangles in a grid across the view: 900,000 vertices of 52 B in the
         // stream, past the buffer's 8 MiB floor.
         let side = 550u16;
         let triangles: Vec<_> = (0..300_000u32)
@@ -1490,22 +1484,27 @@ fn the_stream_buffer_grows_and_the_world_can_leave_the_view() {
         let mut ir = SodModelIr::new("BIG");
         push_mesh(&mut ir, "WORLD_BASE", &triangles, SCENERY_PROP, false);
         let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(world_of(ir)));
-        let (Some(mut baked), Some(mut streamed)) =
-            (open_streaming(&scene, false), open_streaming(&scene, true))
+        let Some(mut test) =
+            common::gpu_or_skip_offscreen(&scene, Offscreen::default(), RenderOptions::default())
         else {
             return;
         };
+        let mut drawn = Vec::new();
         for looking_away in [false, true, false] {
             let mut frame = scene.frame(0.0);
             if looking_away {
                 // Behind the eye: the world's box is outside the frustum.
                 frame.view.target = [0.0, 0.0, 16.0];
             }
-            let (want, got) = (planes(&baked.draw(&frame)), planes(&streamed.draw(&frame)));
-            assert!(want == got, "looking away {looking_away}: planes differ");
-            let drawn = got.2.iter().filter(|&&layer| layer != LAYER_NONE).count();
-            assert_eq!(drawn > 0, !looking_away, "{drawn} pixels drawn");
+            let got = planes(&test.draw(&frame));
+            let covered = got.2.iter().filter(|&&layer| layer != LAYER_NONE).count();
+            assert_eq!(covered > 0, !looking_away, "{covered} pixels drawn");
+            drawn.push(got);
         }
+        assert!(
+            drawn[0] == drawn[2],
+            "the world draws differently after leaving the view"
+        );
     });
 }
 
