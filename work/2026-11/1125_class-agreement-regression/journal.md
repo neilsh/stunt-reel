@@ -25,15 +25,15 @@ All seven reference films, both classes, with and without the switch.
 | BOMB | 8.40 | 21.30 | 20.89 | 8.43 |
 | LOCATION | 8.60 | 8.12 | 7.59 | 6.22 |
 
-`main` reproduces the batch on every film within 1.34 pixels a tick (BALLOON; the others within 0.49), LAND's 6 ticks over 500 pixels included (525 to 532, largest 715 at 531), on a newer GPU driver (621.40 against the batch's 610.88).
+`main` reproduces the batch on every film within 1.34 pixels a tick (BALLOON; the others within 0.53, LOCATION), LAND's 6 ticks over 500 pixels included (525 to 532, largest 715 at 531), on a newer GPU driver (621.40 against the batch's 610.88).
 With the placement off, six films are within 0.22 pixels a tick of the pin and LOCATION is 2.38 below it, and no film has a tick over 500.
 On the GPU alone the placement moves 2,087.21 pixels a tick on LAND and 2,853.56 on BALLOON.
 
 At `main`, 99.8% of LAND 525 to 532's differing pixels and 99.8% of BALLOON's (every tick) have a 4-neighbour of another index on either class: they are edge pixels.
-LAND's hot ticks are a thin actor toward the view's right edge (rows 40 to 99; 3,953 of the pixels in columns 200 to 319), which a picture of tick 531 (not kept) showed as broken streaks on both classes covering different pixels: of 4,389 differing pixels at 525 to 532, 3,799 have the actor layer on exactly one class (1,583 sky against actor, 1,000 terrain against actor), and 88% differ in layer.
+LAND's hot ticks are an actor toward the view's right edge (99.9% of the pixels in rows 40 to 99; 3,953 of them, 90%, in columns 200 to 319), which a picture of tick 531 (not kept) showed as thin broken streaks on both classes covering different pixels: of 4,389 differing pixels at 525 to 532, 3,799 have the actor layer on exactly one class (1,583 sky against actor, 1,000 terrain against actor), and 88% differ in layer.
 BALLOON's are 42,676 pixels that are an actor on both classes (66% of 64,372) and 18,744 a prop against the terrain under it.
 
-**Verdict**: control; with the placement off no film keeps any of its rise, on one render per class.
+**Verdict**: control; with the placement off every film is within 0.22 pixels a tick of the pin or below it, on one render per class.
 The switch turns off #1099's placement and #1197's copy of it for terrain together; the batch's tree predates #1197, so its rise is #1099's.
 
 **Lives in**: [`research/parity/lavapipe-pixel-centres.md`](../../../research/parity/lavapipe-pixel-centres.md) section 1.
@@ -48,7 +48,7 @@ LAND and BALLOON, both classes.
 
 **Result**: LAND 50.08 to 34.11 pixels a tick (9 ticks over 500, largest 762 at 525), BALLOON 54.60 to 19.89 (largest 445 at 809).
 BALLOON's pixels that are an actor on both classes fall from 42,676 to 3,499; its prop-against-terrain pixels stay (18,623 against 18,744).
-LAND's thin actor at 520 to 540 stays: 403.19 pixels a tick there against 392.19.
+LAND's actor-on-one-class pixels at 520 to 540 stay: 403.19 pixels a tick there against 392.19.
 On the GPU the offset itself moves 243.00 pixels a tick on LAND and 176.92 on BALLOON against `main`.
 
 **Verdict**: rejected as a fix: it leaves LAND at 6.5 and BALLOON at 4.8 times the pin, and moves the render by more than the disagreement it removes, so it would need its own adoption on lavapipe.
@@ -58,7 +58,7 @@ It supports the tie-rule reading for BALLOON's in-actor pixels only.
 
 ## 2026-11-28: Capping grazing slides at four times the vertex's distance
 
-**Question**: are the pixels the offset leaves (LAND's thin actor, BALLOON's prop against the terrain) vertices slid along a ray that grazes their plane, which `playone_vertex` moves up to `PLANE_SLIDE_MAX` (10⁶) ray units, so their depth and `w` are far from the vertex's own?
+**Question**: are the pixels the offset leaves (LAND's actor on one class, BALLOON's prop against the terrain) vertices slid along a ray that grazes their plane, which `playone_vertex` moves up to `PLANE_SLIDE_MAX` (10⁶) ray units, so their depth and `w` are far from the vertex's own?
 
 **Method**: `DBG_SLIDE_RATIO=4` makes `playone_vertex` keep a vertex's own projection when the slid point lies more than 4 times the vertex's distance from the eye; alone, and with `DBG_SNAP=5,3`.
 LAND and BALLOON, both classes.
