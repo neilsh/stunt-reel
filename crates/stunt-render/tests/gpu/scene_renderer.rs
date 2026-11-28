@@ -1366,6 +1366,7 @@ fn push_mesh(ir: &mut SodModelIr, name: &str, triangles: &[[[f32; 3]; 3]], class
                 flags: 4,
                 scenery_class: class,
                 decal_tie: 0,
+                list_rank: 0,
             });
         }
         // Clockwise, as the pipeline culls back faces.
@@ -1470,7 +1471,7 @@ fn the_streamed_world_draws_what_the_baked_one_does() {
     });
 }
 
-/// A frame whose stream outgrows the buffer replaces it, a frame that culls the world
+/// A frame whose stream outgrows the 8 MiB floor creates the buffer at its grown size, a frame that culls the world
 /// writes nothing, and the next one draws again, each as the baked world does.
 #[test]
 fn the_stream_buffer_grows_and_the_world_can_leave_the_view() {

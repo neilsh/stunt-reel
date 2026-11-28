@@ -4,7 +4,8 @@ Run through `mise exec -- uv run python work/2026-11/999_frame-streamed-world/st
 <binary> [--adapter lavapipe|gpu ...] [--out FILE]`. Writes a fresh CSV (default
 `stream-stores.csv` beside this script, never appended to): one row per adapter, film and
 variant. Each render with the switch on must print `[stuntreel] world stream: on`, and each
-with it unset must not, so a matching store is known to come from the stream.
+with it unset must not, and none may report a fallback, so a matching store is known to come
+from the stream.
 Exits 1 when any film's four store hashes differ between the variants or a render ran the
 wrong path.
 """
@@ -28,6 +29,9 @@ from stunt_reel.hashing import file_sha256  # noqa: E402
 PLANES = ("frames", "layers", "palettes", "shapes")
 VARIANTS = {"off": None, "stream": "1"}
 STREAM_LINE = "[stuntreel] world stream: on"
+# The line above comes from the CLI's config, so a renderer that fell back to the baked upload or
+# drew no world still prints it; these two lines say it did.
+FALLBACK_LINES = ("world stream: off for this world", "drawing no world")
 SCRATCH = REPO / "build/scratch/stream-stores"
 
 
@@ -38,6 +42,8 @@ def checked_run(expect_stream: bool) -> parity_pipeline.Run:
         code, output = process_tree.run(argv, timeout, cwd=REPO, env=env)
         if code == 0 and (STREAM_LINE in output) != expect_stream:
             return 1, f"world stream line {'missing' if expect_stream else 'present'}"
+        if code == 0 and any(line in output for line in FALLBACK_LINES):
+            return 1, "the renderer did not draw the world from the stream"
         return code, output[-4000:]
 
     return run

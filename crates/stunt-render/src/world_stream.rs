@@ -4,8 +4,8 @@
 //! unsplit [`WorldSource`], each slice's vertex window, indices, outline indices and apexes back
 //! to back, and rewrites each slice in place to address the stream. Each streamed vertex's apex is
 //! the 20 B [`ApexVertex`] the baked upload holds for it, its prop shape word included, so the
-//! stream needs no runs table. A slice of a split world is an error. Nothing draws from the
-//! stream yet.
+//! stream needs no runs table. A slice of a split world is an error. The scene renderer draws the world from the stream
+//! when `RenderOptions::world_stream` is on.
 
 use stunt_core::contracts::{RankSphere, SodVertex, arena_index};
 use stunt_core::world::PropRun;
@@ -712,7 +712,7 @@ mod tests {
         ];
         let ir = &fixture.ir;
         let own = crate::outline::own_apexes(ir);
-        assert!(own.iter().any(|apex| apex[3] == 4.0));
+        assert!(own.iter().any(|apex| apex[3].to_bits() == 4.0f32.to_bits()));
         let (edges, slices) = baked(ir);
         let runs = [PropRun {
             first: 12,
@@ -722,7 +722,7 @@ mod tests {
         let owned = StreamSource::new(
             ir.vertices.clone(),
             ir.indices.clone(),
-            edges.clone(),
+            edges,
             runs.to_vec(),
             ir.rank_spheres.clone(),
         );
@@ -738,6 +738,11 @@ mod tests {
         rebuild(&mut copied, &given, ground, base, decals).expect("held");
         assert_eq!(bytes(&stream.apex), bytes(&copied.apex));
         assert!(stream.apex.iter().any(|v| v.prop_shape == 4));
-        assert!(stream.apex.iter().any(|v| v.apex[3] == 2.0));
+        assert!(
+            stream
+                .apex
+                .iter()
+                .any(|v| v.apex[3].to_bits() == 2.0f32.to_bits())
+        );
     }
 }

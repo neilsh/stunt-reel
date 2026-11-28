@@ -60,7 +60,11 @@ def main() -> int:
                 stage = dict(re.findall(r"memory ([a-z ]+?): rss ([\d.]+) MiB", text))
                 peak = re.search(r"memory peak ([\d.]+) MiB", text)
                 streamed = "[stuntreel] world stream: on" in text
-                if done.returncode or not peak or streamed != (variant == "stream"):
+                fell_back = any(
+                    line in text
+                    for line in ("world stream: off for this world", "drawing no world")
+                )
+                if done.returncode or not peak or streamed != (variant == "stream") or fell_back:
                     print("FAILED", adapter, variant, streamed, text[-500:])
                     return 1
                 rows.append([adapter, run, variant, *(stage.get(k, "") for k in STAGES), peak.group(1)])
