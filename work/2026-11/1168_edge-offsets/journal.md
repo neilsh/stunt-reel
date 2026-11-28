@@ -37,18 +37,20 @@ What is left at each frame's best offset, by side of the view centre (pixel cent
 * **One sign on both sides of the centre, on the world's layers.**
   `bomb` 2971's props lie a column left in the capture on both sides (left of the centre 1,098 left against 279 right, right of it 1,091 against 226) and mostly a row down (1,416 against 708 above, 971 against 634 below); its terrain the same way.
   `land` 540's uncovered sky, terrain, props and actors all lie a row up (sky 708 against 0; terrain 294 against 3 above the centre and 650 against 69 below).
-  `location` 2003's props at +1 lie a row up on both sides (1,268 against 664 above, 607 against 112 below), and `intro` 1343's props a column left and a row up on both.
+  `location` 2003's props at +1 lie a row up on both sides (1,268 against 664 above, 607 against 112 below), and `intro` 1343's props a row up on both (134 against 9 above, 260 against 160 below) and a column left (211 against 117 left of the centre, 128 against 100 right).
   The page shift that fits them gains little where it is the whole page's (`bomb` 2971 +0.013).
-* **Away from the centre on both sides, on frames off in time.**
-  `location` 2003's props at +1 lie a column away on both sides (322 against 190 left of the centre, 251 against 164 right), and at +2 a column toward it on both (491 against 238, 434 against 177), so the capture's page lies between our +1 and +2 there; `location` 2080 at +1 and `intro` 2696's props at +3 lie away on both sides too.
-* **Toward the centre on both sides, on actors only.**
-  `intro` 1343's actors in x, `intro` 1508's in y, `intro` 2696's and `bomb` 2971's in x and y (`bomb`: 130 against 45 left of the centre, 71 against 41 right; 321 against 48 above, 113 against 24 below).
+* **Away from the centre on both sides, on frames whose best page is not the paired one.**
+  `location` 2003's props at +1 lie a column away on both sides (322 against 190 left of the centre, 251 against 164 right), and at +2 a column toward it on both (491 against 238, 434 against 177), which suggests the capture's page lies between our +1 and +2 there, `[Hypothesis]`: one sign flip on two frames, which a zoom, lens or per-slice interpolation difference could give too; a render at a camera interpolated half a tick on would test it.
+  `location` 2080's props at +1 lie a column away on the left (301 against 161) and less clearly on the right (312 against 240), and `intro` 2696's props at +3 a row away on both sides (68 against 9 above, 299 against 143 below; in x away on the left, 172 against 25, and even on the right, 49 against 41).
+* **Toward the centre, on actors only.**
+  `bomb` 2971's in x and y (130 against 45 left of the centre, 71 against 41 right; 321 against 48 above, 113 against 24 below) and `intro` 1508's in y (503 against 275 above, 974 against 183 below).
+  `intro` 1343's and 2696's lie toward it in x on the left only (189 against 58 and 127 against 20), with the right even (119 against 114, 68 against 58); 2696's y is even too (7 against 4 above, 223 against 192 below).
   Their regions straddle the centre (`bomb` 2971's centroid 6.7 px left of it and 2.0 px above), so a capture actor narrower than ours and an actor truncated toward the centre give the same counts here.
-  Those four frames' actor classes hold 1,686, 5,481, 2,482 and 1,227 mismatched pixels at their best offsets.
+  `intro` 1343's, 1508's and 2696's and `bomb` 2971's actor classes hold 1,686, 5,481, 2,482 and 1,227 mismatched pixels at their best offsets.
 * **`intro` 1508's explosion sprite** lies a column left in the capture on both sides of the centre at +2 (1,257 against 206, 1,421 against 47), over its 5,481 actor pixels, while its props match (36 mismatched).
 
 On `land` 540, `bomb` 2971 and `intro` 1343, no world-layer class of 100 or more mismatched pixels lies toward the centre on both sides of it on either axis at the frame's best offset, the signature of truncation the renderer does not yet draw.
-`location` 2003 and 2080 cannot test it: their props lie away on both sides at +1 and toward on both at +2 (2080: 339 against 267 left of the centre, 531 against 273 right), so the sign follows the page; `intro` 2696's props lie away on both at +3.
+`location` 2003 and 2080 cannot test it, since their props' sign in x follows the page: 2003's lie away on both sides at +1 and toward on both at +2 (above); on 2080 only the right side flips clearly (312 away against 240 at +1, 531 toward against 273 at +2), the left going from away (301 against 161) to near even (339 toward against 267), and in y its upper side lies up at both pages (1,510 against 444 at +1, 2,007 against 384 at +2) while its lower side goes from down (532 against 378) to up (958 against 111); `intro` 2696's props lie away on both sides in y at +3.
 A deep anchor's precision loss cannot move a point by a pixel, from the instructions [`sod-vm-lines-spans.md` § 8.14](../../../research/playone-exe/sod-vm-lines-spans.md#814-projected-points-are-truncated-toward-the-centre) cites: `0xB80E` shifts `z'` right by the fewest bits `n` that leave it under 2^15, so for `n ≥ 1` the divisor is at least 2^14, and the quotient then differs from `256 · x' / z'` by less than 2^-14 px for the floored `x'` plus less than 2^-14 of itself for the floored `z'`, under 257/16384 px (about 1/64) in all for an offset under 256 px from the centre, the clip volume's bound.
 It can change a vertex's pixel only where the exact offset lies within about 1/64 px of a pixel's edge, so it cannot move thousands of a frame's edge pixels by a whole pixel.
 The `region` lines give no clipper evidence: each frame's props or terrain form one region touching the view's border, so objects clipped at a view side cannot be told from interior ones.
@@ -57,7 +59,7 @@ Edge-walk rounding (wider or narrower than our fill) is not separated by this pr
 **Verdict.**
 Control, nothing adopted.
 The largest class, by mismatched pixels over the seven frames, is the page's timing: on five of the seven the page ADR 0057 pairs lies one to three ticks before the page with the fewest mismatched pixels, which has 30% to 61% fewer.
-What is left after it is a page or camera offset of a row or a column with one sign across the centre, motion between whole ticks, and, on actors near the centre and the explosion sprite, offsets this probe cannot attribute.
+What is left after it is, on `land` 540, `bomb` 2971 and `intro` 1343's props, a page or camera offset of a row or a column with one sign across the centre; on `location`, a sign that follows the page, which suggests a capture page between two of ours (`[Hypothesis]`); and, on actors near the centre and the explosion sprite, offsets this probe cannot attribute.
 No `PLAYONE` rule for vertex or edge placement results, so no renderer issue is filed; why the slot words name a page one to three ticks early on these frames is a follow-up.
 
 **Lives in.**

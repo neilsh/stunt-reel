@@ -2,7 +2,7 @@
 title: "Edges on the worst frames sit about a pixel off the capture's after vertex truncation"
 started: 2026-11-28
 issue: 1168
-outcome: "No vertex or edge rule: on five of the seven frames a page 1 to 3 ticks after the one ADR 0057 pairs has 30% to 61% fewer mismatched pixels (#1232); the residual is a row or column of one sign across the centre. Added parity-probe edges."
+outcome: "No vertex or edge rule: on five of the seven frames a page 1 to 3 ticks after the one ADR 0057 pairs has 30% to 61% fewer mismatched pixels (#1232); on `land` 540, `bomb` 2971 and `intro` 1343's props the residual is a row or column of one sign across the centre; `location`'s sign follows the page; the actors and `intro` 1508's sprite are open. Added parity-probe edges."
 ---
 
 # Edges on the worst frames sit about a pixel off the capture's after vertex truncation
