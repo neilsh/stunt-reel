@@ -2,7 +2,7 @@
 title: "VisibleWalk recomputes camera LOD constants per node though GateView caches them per frame"
 started: 2026-11-28
 issue: 1088
-outcome: "VisibleWalk's three camera gates read a per-walk FrameGates (lens words, view vector, its length and the depth divisor, computed once) in stunt-render's mesh.rs; an equivalence test over 3 cameras x 6 lenses x 289 points finds identical decisions, and the seven reference films' render stores are byte-identical to main's on the RTX 4070. The Span B loop median fell 2.2% on lavapipe and 3.2% on the GPU, inside each variant's own range on a machine 10-17% busy, so the change is kept on maintainability grounds, not as a measured gain."
+outcome: "VisibleWalk's three camera gates read a per-walk FrameGates (lens words, view vector, its length and the depth divisor, computed once) in stunt-render's mesh.rs; an equivalence test over 4 cameras x 6 lenses x 289 points finds identical decisions, and the seven reference films' render stores are byte-identical to main's on the RTX 4070. The Span B loop median fell 2.2% on lavapipe and 3.2% on the GPU, each smaller than the old variant's spread (55.8 ms against 154.5 ms on lavapipe, 13.8 ms against 29.4 ms on the GPU) on a machine 10-17% busy, so no gain is claimed and the change is kept on maintainability grounds."
 ---
 
 # VisibleWalk recomputes camera LOD constants per node though GateView caches them per frame
