@@ -527,7 +527,7 @@ fn world_is_drawn_when_present() {
     });
 }
 
-/// The open's world upload time is zero without a world and positive with one.
+/// The open's world planning time is zero without a world and positive with one.
 #[test]
 fn upload_times_charge_the_world_only_when_there_is_one() {
     common::gpu_test(|| {

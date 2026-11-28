@@ -508,7 +508,7 @@ impl Renderer {
         })
     }
 
-    /// How long the open spent uploading the scene's shapes and world.
+    /// How long the open spent uploading the scene's shapes and planning its world.
     #[must_use]
     pub fn upload_times(&self) -> UploadTimes {
         self.scene_pass.upload_times()

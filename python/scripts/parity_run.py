@@ -214,7 +214,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         metavar="N",
         help=(
             "render each film in up to N stuntreel processes (LP_NUM_THREADS=1 each), cut so "
-            "jobs x workers fits the cores and about 0.93 GiB of RAM per process; default 1"
+            "jobs x workers fits the cores and 0.93 GiB of RAM per process; default 1"
         ),
     )
     return parser.parse_args(argv)
