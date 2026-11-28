@@ -5,6 +5,7 @@
 //! - `[I5]` Ordered decal pass: `GreaterEqual` under reversed depth, no depth write, hardware
 //!   depth bias toward the viewer (`constant: 2, slope_scale: 2.0, clamp: 0.0`).
 
+use crate::mesh::ApexVertex;
 use stunt_core::contracts::SodVertex;
 
 use crate::renderer::Look;
@@ -16,13 +17,6 @@ pub use stunt_core::frame::{
 /// Format of the optional plane target: two words per pixel, `layer << 8 | unlit palette index`
 /// then the pixel's shape word (`RenderedPage::shapes`).
 pub(crate) const PLANE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rg32Uint;
-
-/// Bind group index of the world's prop runs in the plane pipelines (`prop_runs` in
-/// `mode13h.wgsl`).
-pub(crate) const PROP_RUNS_GROUP: u32 = 3;
-
-/// Bytes of one prop run in the [`PROP_RUNS_GROUP`] buffer: `first`, `end` and the shape word.
-pub(crate) const PROP_RUN_SIZE: u64 = 12;
 
 /// GPU uniform buffer structure for per-model transformation matrix matching WGSL `@group(2) @binding(0)`.
 #[repr(C)]
@@ -123,9 +117,6 @@ pub(crate) struct RenderPipelines {
     pub(crate) bar_pipeline: wgpu::RenderPipeline,
     /// Bind group layout for `@group(2) @binding(0)` (`ModelUniform`).
     pub(crate) model_bind_group_layout: wgpu::BindGroupLayout,
-    /// Bind group layout for [`PROP_RUNS_GROUP`] (the world's prop runs, `fs_main_plane`), which
-    /// only pipelines with a plane target or the diagnostic look carry; `None` otherwise.
-    pub(crate) prop_runs_layout: Option<wgpu::BindGroupLayout>,
 }
 
 impl RenderPipelines {
@@ -172,38 +163,26 @@ impl RenderPipelines {
         }
     }
 
-    /// Returns the layout of the second vertex stream: each vertex's apex
-    /// (`outline::Outlined`) at location 3.
+    /// Returns the layout of the second vertex stream, [`ApexVertex`]: each vertex's apex
+    /// (`outline::Outlined`) at location 3 and its prop shape word at location 5.
     pub(crate) fn apex_buffer_layout() -> wgpu::VertexBufferLayout<'static> {
-        const ATTRIBUTES: [wgpu::VertexAttribute; 1] = [wgpu::VertexAttribute {
-            format: wgpu::VertexFormat::Float32x4,
-            offset: 0,
-            shader_location: 3,
-        }];
+        const ATTRIBUTES: [wgpu::VertexAttribute; 2] = [
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Float32x4,
+                offset: 0,
+                shader_location: 3,
+            },
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Uint32,
+                offset: size_of::<crate::outline::Apex>() as wgpu::BufferAddress,
+                shader_location: 5,
+            },
+        ];
         wgpu::VertexBufferLayout {
-            array_stride: size_of::<crate::outline::Apex>() as wgpu::BufferAddress,
+            array_stride: size_of::<ApexVertex>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &ATTRIBUTES,
         }
-    }
-
-    /// Creates the bind group layout for [`PROP_RUNS_GROUP`]: the world's prop runs as one
-    /// read-only storage buffer of `[first, end, shape word]` `u32` triples, which the
-    /// fragment stage searches.
-    pub(crate) fn create_prop_runs_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
-        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("stunt_prop_runs_layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Storage { read_only: true },
-                    has_dynamic_offset: false,
-                    min_binding_size: wgpu::BufferSize::new(PROP_RUN_SIZE),
-                },
-                count: None,
-            }],
-        })
     }
 
     /// Creates the bind group layout for the per-model uniform (`@group(2)`): one
@@ -302,10 +281,6 @@ impl RenderPipelines {
             (Look::Diagnostic, false) => "fs_sky_diagnostic",
         };
         let model_bind_group_layout = Self::create_model_bind_group_layout(device);
-        // The plane's shape word and the diagnostic look's colour look world props up in their
-        // runs; no other fragment reads them.
-        let prop_runs_layout = (plane_format.is_some() || look == Look::Diagnostic)
-            .then(|| Self::create_prop_runs_layout(device));
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("stunt_mode13h_pipeline_layout"),
@@ -313,7 +288,6 @@ impl RenderPipelines {
                 Some(camera_layout),
                 Some(palette_layout),
                 Some(&model_bind_group_layout),
-                prop_runs_layout.as_ref(),
             ],
             immediate_size: 0,
         });
@@ -487,7 +461,6 @@ impl RenderPipelines {
             sky_pipeline,
             bar_pipeline,
             model_bind_group_layout,
-            prop_runs_layout,
         }
     }
 }
@@ -616,6 +589,8 @@ mod tests {
         assert_eq!(layout.attributes[3].offset, 28);
         assert_eq!(layout.attributes[3].shader_location, 4);
         let apex = RenderPipelines::apex_buffer_layout();
-        assert_eq!(apex.array_stride, 16);
+        assert_eq!(apex.array_stride, 20);
+        assert_eq!(apex.attributes[1].offset, 16);
+        assert_eq!(apex.attributes[1].shader_location, 5);
     }
 }

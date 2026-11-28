@@ -124,7 +124,7 @@ pub struct SodVertex {
 
 `decal_tie` is 1 on a filled decal's vertices, and on those of each earlier coplanar polygon it overlaps within their plane, so a world prop's decal keeps its tie on a steep facet ([`sod-vm-lines-spans.md` § 8.14](../../playone-exe/sod-vm-lines-spans.md#814-projected-points-are-truncated-toward-the-centre)).
 
-A world prop vertex carries no record of its shape: the world lists its prop vertices as runs with each run's shape (`World::prop_runs`), and the renderer looks a vertex up there for the parity plane's shape word ([`attribution.md`](../../parity/attribution.md) § 1).
+A world prop vertex carries no record of its shape: the world lists its prop vertices as runs with each run's shape (`World::prop_runs`), and the renderer writes each vertex's run's shape word into its second vertex stream for the parity plane's shape word ([`attribution.md`](../../parity/attribution.md) § 1).
 
 ### 2.3 Transparency Keys
 
