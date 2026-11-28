@@ -413,7 +413,8 @@ def video_script(
     string behind an ``x`` so it stays a string. With *stream_token* (hex or letters) each frame
     also goes through ``dosbox.debugmsg``: ``h<token>`` opens the stream (the script's first statement, so the emulator's log carries it near the top), ``p<f>:<flags>:<hex>``
     is the composed picture (flags 1: A000 equals the first buffer only, which is logged; 2: the
-    second only; 3: both; 0: neither, the second is logged) and ``e<end>`` closes it. Raises ValueError if *cap* or *end_hold* is below 1, or the token is
+    second only; 3: both; 0: neither, the second is logged) and ``e<end>`` closes it (``exhold`` or
+    ``excapped``, the ``x`` prefix included). Raises ValueError if *cap* or *end_hold* is below 1, or the token is
     not alphanumeric.
     """
     if cap < 1:

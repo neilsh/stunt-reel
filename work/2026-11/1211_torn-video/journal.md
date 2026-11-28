@@ -80,6 +80,26 @@ Scratch scripts in the project files folder: `s2_gate.py` (pinned pages against 
 
 **Lives in.** `research/playone-exe/capture-dosbox-automation.md` § 4.6.
 
+## 2026-11-28: Step 3, decoding the stream log to an index video
+
+**Question.** Does `stream.log` encode to a small lossless file that decodes back to the same index pictures, and does the decoded picture at each pinned `CTRY` page's frame equal the page?
+
+**Method.** A copy of the `stream.log` of the step 2 run (`/home/user/s2`, 1,907 frames; the encode ran in `/home/user/s3`, so the original log stays) through `mise run stream-encode -- <dir> --delete-log` (a Haiku-built module, `stunt_reel.tac.stream`): the pictures piped as raw 320x192 gray8 into `ffmpeg -c:v ffv1 -level 3`, decoded back and compared by SHA-256, then `stream.json` written and the copy's log deleted.
+`s3_gate.py` (project files folder) decoded `stream.mkv` and compared rows 0..184 at each pinned page's `emu_frame`.
+
+**Result.**
+
+* 1,907 pictures, 117.2 MB raw, 235 MB of log hex, `stream.mkv` 8,450,448 bytes (about 14 times smaller than the raw pictures, 28 times smaller than the log); encoding took about 2 s in all, with no split between ffmpeg and the parsing.
+  Round trip: raw and decoded SHA-256 equal (`afbdd910d785...`).
+* 121 of 121 pinned pages equal the decoded picture at their own frame, as they equalled the log's.
+* `stream.json` records file, both hashes, frame count, first frame 1276, size, flag counts (0: 85, 1: 31, 2: 1,786, 3: 5), layout `patch3` and end `hold`; a `stream` field in `meta.json` was left out (it needs the Rust parity structs and their schema).
+* After #1218's front-rule finding, `stream.json` also lists the frames with flags 0 as `held` (85 on this run), so a consumer repeats the last picture of flags 1 to 3 there; the video keeps every logged picture.
+* The log's trailer is `exhold`, not `ehold`, because the script's strings carry an `x` prefix; the parser accepts both.
+
+**Verdict.** Go on step 4 (consumers).
+
+**Lives in.** `research/playone-exe/capture-dosbox-automation.md` § 4.6.
+
 ## 2026-11-28: The front rule on frames where A000 equals neither buffer
 
 **Question.** Which composed buffer holds the newest whole picture on frames where `A000` equals neither, so a decoder of `capture-video --stream` knows what to show there? (#1211, step 3 input.)
