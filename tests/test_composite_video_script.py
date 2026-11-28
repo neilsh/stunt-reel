@@ -6,6 +6,7 @@ import importlib.util
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "python" / "scripts"
@@ -59,3 +60,24 @@ def test_a_label_colon_is_escaped_for_drawtext() -> None:
     assert r"text='a\:b'" in graph
     assert "xstack" not in graph
     assert graph.endswith("[out]")
+
+
+def test_a_grid_is_scaled_whole_and_each_label_sits_in_its_panel() -> None:
+    graph = composite_video.grid_filter(["A", "B", "C"], 2, 2, "font=Sans")
+    assert graph.startswith("scale=1280:-1:flags=neighbor,setsar=1,")
+    assert "text='B':x=648:y=8" in graph
+    assert "text='C':x=8:y=408" in graph
+
+
+def test_panels_lay_out_in_rows_and_the_last_row_is_padded() -> None:
+    panels = [np.full((2, 3, 3), n, dtype=np.uint8) for n in (1, 2, 3)]
+    grid = composite_video.lay_out(panels, 2)
+    assert grid.shape == (4, 6, 3)
+    assert [grid[0, 0, 0], grid[0, 3, 0], grid[2, 0, 0], grid[2, 3, 0]] == [1, 2, 3, 0]
+
+
+def test_video_dir_needs_as_seen() -> None:
+    with pytest.raises(SystemExit):
+        composite_video.parse_args(["--out", "x.mp4", "--video-dir", "d"])
+    args = composite_video.parse_args(["--out", "x.mp4", "--as-seen", "--video-dir", "d"])
+    assert args.as_seen

@@ -24,11 +24,14 @@ import numpy as np
 from stunt_reel.bench.ssim import render_luma, window_ssim
 from stunt_reel.parity_artifacts import (
     CAPTURE_META,
+    DERIVED_FILE,
     VIDEO_FILE,
     PixelEqual,
     ReferenceCheck,
     RenderStore,
     VideoCapture,
+    derive_columns,
+    load_fresh_derived,
     load_video_capture,
     read_capture,
     read_capture_palette,
@@ -72,6 +75,45 @@ def iter_video_frames(avi: Path, width: int, height: int) -> Generator[np.ndarra
                 raise VideoCheckError(f"{avi}: ffmpeg failed to decode it")
         finally:
             process.kill()  # a reader that stops early must not leave ffmpeg on a broken pipe
+
+
+@dataclass(frozen=True)
+class CaptureFrame:
+    """One video frame with its clocks: the frame as the emulator recorded it, torn or not."""
+
+    #: Index in the AVI, equal to the row of the tick log.
+    index: int
+    rgb: np.ndarray
+    emu_frame: int
+    film_tick: int
+    #: The film tick the frame's picture is paired with (``derived.json``, ADR 0057).
+    render_tick: int
+
+
+def iter_capture_frames(directory: Path) -> Generator[CaptureFrame]:
+    """Every frame of the video capture in *directory* with its clocks, in order.
+
+    ``render_tick`` is read from a fresh ``derived.json`` when one lies beside ``meta.json``,
+    else derived in memory; a stale ``derived.json`` raises. The log and the AVI must have the
+    same number of rows, or :class:`VideoCheckError` is raised after the last common frame.
+    """
+    capture = load_video_capture(directory)
+    if (directory / DERIVED_FILE).is_file():
+        ticks = load_fresh_derived(directory).frames.render_tick
+    else:
+        ticks = derive_columns(capture)[1].render_tick
+    log = capture.log
+    width, height = capture.geometry.width, capture.geometry.height
+    count = 0
+    for index, rgb in enumerate(iter_video_frames(directory / VIDEO_FILE, width, height)):
+        if index >= len(log.frame):
+            raise VideoCheckError(f"{directory}: the AVI holds more frames than the log's rows")
+        yield CaptureFrame(index, rgb, log.frame[index], log.film_tick[index], ticks[index])
+        count = index + 1
+    if count != len(log.frame):
+        raise VideoCheckError(
+            f"{directory}: the AVI holds {count} frames, the log {len(log.frame)}"
+        )
 
 
 def decode_frames(avi: Path, width: int, height: int, wanted: set[int]) -> dict[int, np.ndarray]:

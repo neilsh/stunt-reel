@@ -16,6 +16,8 @@ from stunt_reel.parity_artifacts import (
     CapturedFrame,
     CaptureSet,
     Geometry,
+    VideoCapture,
+    derive_columns,
     load_video_capture,
     write_capture,
 )
@@ -217,3 +219,47 @@ def test_page_matches_pairs_classifies_and_rejects_a_narrow_search(
     assert [m.offset for m in matches[:2]] == [1, 0]
     with pytest.raises(ValueError, match="search"):
         video_check.page_matches(tmp_path, capture, reference, search=3)
+
+
+def _twelve_row_capture(rows: int = 12) -> VideoCapture:
+    """The ``with-slots`` capture re-logged to *rows* rows of the 64x48 synthetic AVI."""
+    capture = load_video_capture(FIXTURES / "with-slots")
+    return replace(
+        capture,
+        geometry=replace(capture.geometry, width=64, height=48),
+        log=replace(
+            capture.log,
+            frame=tuple(range(101, 101 + rows)),
+            film_tick=tuple(range(10, 10 + rows)),
+            global_tick=tuple(range(rows)),
+            slot_clock=tuple(i // 2 for i in range(rows)),
+            slot_ticks=(0,) * rows,
+        ),
+        palettes=replace(capture.palettes, changes=()),
+    )
+
+
+@needs_ffmpeg
+def test_every_frame_comes_with_its_clocks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    shutil.copy(SYNTHETIC_AVI, tmp_path / VIDEO_FILE)
+    capture = _twelve_row_capture()
+    monkeypatch.setattr(video_check, "load_video_capture", lambda _directory: capture)
+    frames = list(video_check.iter_capture_frames(tmp_path))
+    assert [f.index for f in frames] == list(range(12))
+    assert [f.emu_frame for f in frames] == list(range(101, 113))
+    assert [f.film_tick for f in frames] == list(range(10, 22))
+    assert frames[3].rgb.shape == (48, 64, 3)
+    expected = derive_columns(capture)[1].render_tick
+    assert tuple(f.render_tick for f in frames) == expected
+
+
+@needs_ffmpeg
+def test_a_log_and_an_avi_of_different_lengths_are_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    shutil.copy(SYNTHETIC_AVI, tmp_path / VIDEO_FILE)
+    for rows in (11, 13):
+        capture = _twelve_row_capture(rows)
+        monkeypatch.setattr(video_check, "load_video_capture", lambda _d, c=capture: c)
+        with pytest.raises(video_check.VideoCheckError):
+            list(video_check.iter_capture_frames(tmp_path))
