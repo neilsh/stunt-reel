@@ -103,7 +103,7 @@ Lavapipe draws a device on one thread, so this is how one film uses more than on
 `mise run composite-video -- --out ctry.mp4 [--film ctry] [--views capture,diagnostic,mode13h,modern] [--columns N] [--scale N] [--fps N] [--software-only] [--as-seen]` renders a `references.toml` film once per look and lays each panel beside its reference capture in one labelled video, by default two by two for four views and in one row otherwise.
 The capture holds each frame until the next, each starting at the render tick the scorer pairs it with (the first from tick 0), so the panels share one real-time clock; CTRY's capture, a frame about every 11 ticks, looks choppier than the renders.
 
-With `--as-seen` (and `--video-dir DIR`, default the film's `captures-video/<slug>`) the capture panel is instead the film's full-rate video recording, at the frame rate its `meta.json` records (PLAYONE's 2190197/31250 Hz when it records none).
+With `--as-seen` (and `--video-dir DIR`, default the film's `captures-video/<slug>`) the capture panel is instead the film's full-rate video recording, at the frame rate its `meta.json` records (PLAYONE's 2190197/31250 Hz when it records none); `--fps` is ignored with `--as-seen`.
 Each recorded frame shows, torn frames included, and each render panel shows the film tick that frame's `render_tick` names; a tick past a render's end shows its last frame.
 `render_tick` comes from `derived.json` when one lies beside `meta.json` (a stale one is refused, not re-derived) and is derived in memory otherwise.
 A recording whose frame count differs from its log's rows is refused.
