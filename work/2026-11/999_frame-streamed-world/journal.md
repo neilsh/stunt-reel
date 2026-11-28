@@ -76,7 +76,7 @@
 - **Built**: the release `stuntreel.exe` at main `287fc28a` (#1215), the machine idle (about 2 % CPU) and the loop not timed.
 - **How**: [`stream_store_check.py`](stream_store_check.py) and [`stream_memory_check.py`](stream_memory_check.py) with `--adapter lavapipe --adapter gpu`, run through a one-off wrapper that skips the reference capture's pinned-hash check.
   The wrapper was needed because four local captures (`ctry`, `land`, `bomb`, `location`) pre-date the pins #1165 moved and `cloud-assets fetch` has no credentials here; `ctry` was recaptured locally (hash differs from the pin) and the other three are the older captures.
-  The renders read the film and its archive; each pair is one binary, so the comparison does not depend on the capture.
+  Both variants of a pair read the same capture with the same binary, so the pair compares like with like; the stores are not compared to the pinned capture.
 - **Result**:
   - Stores, [`stream-stores-win.csv`](stream-stores-win.csv): off and on are identical in all four planes on the seven films, on both adapters (14 of 14 pairs).
   - Peak memory, [`stream-memory-win.csv`](stream-memory-win.csv), MiB of resident memory, three runs each:
@@ -88,5 +88,5 @@
     | RTX 4070 | off | 531.0 to 531.3 | 245.4 to 245.6 | 825.1 to 825.3 |
     | RTX 4070 | on | 814.4 to 815.3 | 529.8 to 530.0 | 814.4 to 815.3 |
 
-    The peak is lower by about `280` MiB on lavapipe and by about `11` MiB on the RTX 4070, where the stream's host-side copy of the mesh raises the resident set after the renderer opens (by about `283` MiB) and the off variant's peak sits at the renderer's opening.
+    The peak is lower by about `280` MiB on lavapipe and by about `11` MiB on the RTX 4070, where the stream's host-side copy of the mesh raises the resident set after the renderer opens by about `283` MiB; the stages' peaks (`825` off, `815` on) are not explained by the four stage readings, which this run did not look into.
 - **Verdict**: stores identical on all seven films on Windows lavapipe and the RTX 4070; peak memory lower on both, in three of three pairs; `[Bounded Observation]`, one machine, one day, the reference captures not at their pins.
