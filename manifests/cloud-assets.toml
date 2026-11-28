@@ -48,42 +48,63 @@ references = { balloon = "02f4b6e1f471d8cf8ae89c22afd47bc0be1df0b7d94931ca863b5a
 
 [captures-video-ctry]
 into = "captures-video/vault-ctry"
-include = ["capture.avi", "meta.json"]
+include = ["capture.avi", "meta.json", "stream.mkv", "stream.json"]
 exclude = []
 on_demand = true
+key = "v2/captures-video-ctry-b92d1de7f200ff4c.tar.zst"
+sha256 = "b92d1de7f200ff4cc13ff46f5f1ed955358283b98c3eefa3b21129c49b7eca07"
+bytes = 9224890
 
 [captures-video-intro]
 into = "captures-video/vault-intro"
-include = ["capture.avi", "meta.json"]
+include = ["capture.avi", "meta.json", "stream.mkv", "stream.json"]
 exclude = []
 on_demand = true
+key = "v2/captures-video-intro-969e7ee797a6f34d.tar.zst"
+sha256 = "969e7ee797a6f34d2eeb065393739c64165686e8b766108f196c8fa9ef41fbb9"
+bytes = 18380944
 
 [captures-video-land]
 into = "captures-video/vault-land"
-include = ["capture.avi", "meta.json"]
+include = ["capture.avi", "meta.json", "stream.mkv", "stream.json"]
 exclude = []
 on_demand = true
+key = "v2/captures-video-land-a94706873de56687.tar.zst"
+sha256 = "a94706873de566873e1d382bdaaeaad4a08add6c0414455a12364bdfa880e50e"
+bytes = 5764913
 
 [captures-video-balloon]
 into = "captures-video/vault-balloon"
-include = ["capture.avi", "meta.json"]
+include = ["capture.avi", "meta.json", "stream.mkv", "stream.json"]
 exclude = []
 on_demand = true
+key = "v2/captures-video-balloon-afadd93c6558bd3f.tar.zst"
+sha256 = "afadd93c6558bd3f3893d2ec84629deb91d081d9e055785bbe9088b938d5bd03"
+bytes = 9003581
 
 [captures-video-traintnl]
 into = "captures-video/vault-traintnl"
-include = ["capture.avi", "meta.json"]
+include = ["capture.avi", "meta.json", "stream.mkv", "stream.json"]
 exclude = []
 on_demand = true
+key = "v2/captures-video-traintnl-ede867b61669135e.tar.zst"
+sha256 = "ede867b61669135ef4d654cee128fab1cb89809d9ccdb5b278427aa635f49d3e"
+bytes = 7086352
 
 [captures-video-bomb]
 into = "captures-video/vault-bomb"
-include = ["capture.avi", "meta.json"]
+include = ["capture.avi", "meta.json", "stream.mkv", "stream.json"]
 exclude = []
 on_demand = true
+key = "v2/captures-video-bomb-6c4ac17ae1e81bd7.tar.zst"
+sha256 = "6c4ac17ae1e81bd74f224947e97a9c6a1fe85782cabc46702806512db23a73ed"
+bytes = 18931652
 
 [captures-video-location]
 into = "captures-video/vault-location"
-include = ["capture.avi", "meta.json"]
+include = ["capture.avi", "meta.json", "stream.mkv", "stream.json"]
 exclude = []
 on_demand = true
+key = "v2/captures-video-location-c7ad6c77739d2165.tar.zst"
+sha256 = "c7ad6c77739d2165128fc4de61c52e5622bdae02b1527665fd192b7a9e464691"
+bytes = 61776522
