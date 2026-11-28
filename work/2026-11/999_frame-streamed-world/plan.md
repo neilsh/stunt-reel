@@ -12,7 +12,8 @@ The goal is stores byte-identical either way; Tasks 6 and 7 check it.
 (2) lets it restage the slice lists the renderer already holds, in place,
 (3) adds `StreamBuffers`, one GPU buffer holding the vertex, apex, index and outline sections, and
 (4) routes the world's draws through either the baked `GpuModel` or the stream.
-The baked upload, culling (`collect_world_meshes`) and sprite cuts (`GpuModel::cut`) are unchanged in this stage: the stream copies whatever slices they produce.
+Culling (`collect_world_meshes`) and sprite cuts (`GpuModel::cut`) are unchanged: they read only the CPU node arena, and the stream copies whatever slices they produce.
+With the switch on, the world's device buffers are not created at all (Task 3), so stage B measures the stream's own memory and answers design.md open call 4; with it off, the baked upload is today's.
 
 **Spec:** [`design.md`](design.md) § 2 to § 6 and the owner's settled open calls on [#999](https://github.com/neilsh/stunt-reel/issues/999#issuecomment-7184561095) (2026-11-26 triage comment): one `write_buffer` a frame, one buffer for all the streams, grow to the next power of two and at least double, never shrink; ground streams too; pipelines untouched.
 Issue: [#1092](https://github.com/neilsh/stunt-reel/issues/1092).
@@ -37,7 +38,7 @@ If #1101 is closed instead of merged, rebase onto `main` and restore stage A's p
 | File | Change |
 |---|---|
 | `crates/stunt-render/src/world_stream.rs` | Task 1 (shape word per vertex), Task 2 (restage in place) |
-| `crates/stunt-render/src/mesh.rs` | Task 1 (drop `chunk_prop_runs` if unused), Task 3 (keep the world's CPU edge list on request) |
+| `crates/stunt-render/src/mesh.rs` | Task 1 (drop `chunk_prop_runs` if unused), Task 3 (plan the world without device buffers) |
 | `crates/stunt-render/src/stream_buffers.rs` (new) | Task 4 |
 | `crates/stunt-render/src/lib.rs` | Task 4 (`mod stream_buffers;`) |
 | `crates/stunt-render/src/renderer/mod.rs` | Task 5 (`RenderOptions::world_stream`, passed to `SceneRenderer::new`) |
@@ -78,16 +79,17 @@ The stream must hold every one of them, and each list must then address the stre
 Note on cuts: [#1090](https://github.com/neilsh/stunt-reel/issues/1090) found no placement cut out of the shared `WORLD_BASE` and `WORLD_DECAL` slices on the seven reference films ([`lavapipe-world-draws.md`](../../../research/parity/lavapipe-world-draws.md)); a cut slice still streams like any other (its own index and edge range), so the stream does not depend on that finding, but the seven-film store check (Task 7) exercises cuts only where a film has them.
 Cite that in the PR as #1092 asks.
 
-## Task 3: keep the world's CPU edge list
+## Task 3: plan the world without device buffers
 
 The stream copies outline indices from the same list the baked chunk's edge buffer holds (`plan_edges` output), so a streamed slice's `edge_offset` means the same thing.
-Today that list goes to the GPU and is dropped.
+Today that list goes to the GPU and is dropped, and the world's device buffers (about `334` MiB on `LOCATION`, design.md § 1) are created whether or not anything draws from them.
 
-- [ ] Give `GpuModel::from_ir_outlined` a way to keep chunk 0's edge list on the CPU, only when asked: for example a `keep_edges: bool` parameter stored as `GpuModel::cpu_edges: Option<Vec<u32>>` with an accessor `pub(crate) fn cpu_edges(&self) -> Option<&[u32]>`.
-  Its one caller is `SceneRenderer::new`; the other constructors keep nothing.
-- [ ] When the plan splits the model into more than one chunk, keep nothing (`None`): stage A's stream refuses a split world (`SliceOutsideSource`), and the design note's probe found one chunk on each of the seven films.
-- [ ] Test: `from_ir_outlined` takes a device, so either factor the keep into a GPU-free helper called from `upload` and unit-test that against `plan_edges` on the same plan (the stage A tests' `baked` helper computes it), or test `cpu_edges` in the GPU tests.
-- [ ] Commit `feat(render): keep the world's outline list for the stream (#1092)`.
+- [ ] Split `GpuModel::upload` into a CPU-only planning step (nodes, roots, bounds, marks, the slice plan and the outline list from `plan_edges`) and the step that creates each chunk's device buffers (`GpuChunk::upload`).
+- [ ] Add a constructor for the streamed world, for example `GpuModel::plan_outlined(ir, outlined, marks) -> Option<(GpuModel, Vec<u32>)>`, that runs only the planning step: the model has no chunks (`chunks` empty), and the `Vec<u32>` is the one chunk's outline list.
+  It returns `None` when the plan splits the model into more than one chunk: stage A's stream refuses a split world, and the design note's probe found one chunk on each of the seven films; the caller then uses the baked upload.
+  `from_ir_outlined` keeps its signature and behaviour, built from the two steps.
+- [ ] Unit test (no GPU): `plan_outlined` on a fixture world gives the same nodes, marks and outline list as `plan_edges` on the same plan (the stage A tests' `baked` helper computes it), and `None` for a fixture forced to split (a small `max_buffer_size`, if the planning step takes the limit as an argument).
+- [ ] Commit `refactor(render): plan the world's slices and outline without device buffers (#1092)`.
 
 ## Task 4: `StreamBuffers`, one buffer written once a frame
 
@@ -116,17 +118,21 @@ New module `crates/stunt-render/src/stream_buffers.rs`.
 - [ ] The CLI reads `STUNT_WORLD_STREAM=1` once where it builds its config from the options (not inside `render_options`, which stays pure), stores it, and `render_options` copies it, so `mise run ab -- --variant 'stream STUNT_WORLD_STREAM=1'` can time one binary under both settings later; `config/tests.rs` stays unaffected.
   Print one `[stuntreel] world stream: on` line when it is on, beside `headless.rs`' other start-up lines.
 - [ ] `SceneRenderer` gains, only when the option is on and the scene has a world:
-  - `stream_source: Option<StreamSource>`, an owned copy of what `WorldSource` borrows: the world's `ir.vertices`, `ir.indices`, its apex (each vertex's own position, `own_positions`, since the world is uploaded with its own positions), `prop_runs`, and the edge list from Task 3.
+  - the world model from `GpuModel::plan_outlined` (Task 3) in place of `from_ir_outlined`, so no world device buffer exists; when it returns `None`, the baked upload and today's draws, with the stream off for the run and one start-up line saying why.
+  - `stream_source: Option<StreamSource>`, an owned copy of what `WorldSource` borrows: the world's `ir.vertices`, `ir.indices`, `prop_runs`, and the outline list from Task 3.
+    No apex copy: the world's apex is each vertex's own position, so make `WorldSource::apex` an `Option<&[[f32; 3]]>` where `None` reads `vertices[i].position` (saves about `77` MiB on `LOCATION`, design.md § 3 item 3), and keep `Some` for the stage A tests that pass one.
+    Task 1's `apex_vertices` call then takes the window's own positions when `apex` is `None`; give `apex_vertices` positions as an iterator if that is simpler than a slice.
     It must be copied in `SceneRenderer::new`, because the CLI calls `FilmScene::release_world_mesh` after the renderer opens (`crates/stunt-cli/src/headless.rs`); that holds the mesh twice until the release, and then keeps about 253 MiB of CPU mesh resident on `LOCATION` (design.md open call 4), both of which Task 7's memory check measures.
   - `stream: WorldStream` and `stream_buffers: StreamBuffers`.
   With the option off these are `None` / empty and never touched.
 - [ ] At the end of `prepare` (after `place_sprites`, before returning), when `stream_source` is set: collect `&mut` to every world slice list in draw order (the `Target::World` draw's `ground`, `base`, `decals` in `self.prepared`, then each `self.steps[i].props`' `base` and `decals`), `restage` them, then `stream_buffers.write(device, queue, &stream)`; `prepare` already takes the device and queue.
   `place_sprites` returns early when no sprite is placed, so `self.steps` may be empty; borrow the lists with `iter_mut` over `self.prepared` (filtered to `Target::World`) chained with `self.steps`, since `restage` takes disjoint `&mut Vec`s.
-  On `SliceOutsideSource` (a split world, or a bug), fall back to the baked draw for this frame: leave the lists untouched and set a per-frame flag that `resolve` reads; log once (`eprintln!`) so the failure is visible.
-- [ ] Route the world's draws: replace `resolve`'s `&GpuModel` with a small `enum Drawable<'a> { Model(&'a GpuModel), Stream(&'a StreamBuffers) }` with `draw_slices` and `draw_edges` that forward; `Target::World` resolves to `Stream` when the frame was restaged, else `Model`.
+  A split world never reaches here (Task 3), so `SliceOutsideSource` is a bug: there are no baked buffers to fall back to, so draw no world that frame, leave the lists untouched, and log it (`eprintln!`, once) so the store check catches it.
+- [ ] Route the world's draws: replace `resolve`'s `&GpuModel` with a small `enum Drawable<'a> { Model(&'a GpuModel), Stream(&'a StreamBuffers) }` with `draw_slices` and `draw_edges` that forward; `Target::World` resolves to `Stream` when the world is streamed, else `Model`.
   The ground loop in `draw` (which calls `world.draw_slices` / `draw_edges` directly) goes through the same enum.
   Draw order, pipelines, bind groups 0 to 2 and the uniform are unchanged.
-- [ ] `UploadTimes` is unchanged; the baked upload still runs in this stage (stage C deletes it).
+- [ ] `UploadTimes::world` keeps measuring the world's construction, which with the switch on is the plan and the source copy, not an upload; say so in its doc comment.
+  The baked path stays for the switch off (stage C deletes it).
 - [ ] Commit `feat(render): draw the world from the per-frame stream behind STUNT_WORLD_STREAM (#1092)`.
 
 ## Task 6: GPU tests, stream on against stream off
@@ -148,8 +154,12 @@ Stores (#1092's first acceptance item).
   Every film's frames, layers, palettes and shapes hashes must match.
 - [ ] Windows lavapipe (mesa-dist-win 25.2.8) and the RTX 4070: the same script on the owner's machine, run through the thread that owns this work (Remote Control on Legion, folder `E:\git\stunt-reel`); report back to the PR rather than block on it.
   If `mise run ab` cannot render films other than `LOCATION`, the script's renders stand, as #1092 allows; say so in the PR.
+  The renders relink each film's `.ALL` with `target/release/stuntreel.exe` (`render_film`), so build or copy one there first in a fresh worktree.
+  On the owner's RTX 4070, `modern::the_vignette_leaves_the_centre_and_darkens_the_corners_by_its_formula` fails on `main` too while CI passes; a local `mise run check` failure on that test alone is not this stack's.
+- [ ] Check every render with the switch on printed `[stuntreel] world stream: on`, workers included, so a store match is known to come from the stream.
 - [ ] Peak memory (#1092's second item): `--report-memory` on `LOCATION` ticks `12..120`, three runs each with the switch off and on, on cloud lavapipe here and on both Windows adapters on Legion.
-  Expect the switch to raise the peak, since this stage keeps the baked device buffers and a CPU copy of the mesh (design.md open call 4); if it does, the PR says the item fails and why, as #1092 allows, and stage C (#1093), which deletes the baked upload, is where the gate must pass.
+  With the switch on there are no world device buffers but a CPU copy of the mesh stays resident (design.md open call 4), and the mesh is held twice until `release_world_mesh`; the figure says whether the stream alone passes the memory gate.
+  If it does not, the PR says so and why, as #1092 allows, and per the owner's call 4 steps 1 and 2 (stages C and D) land together.
 - [ ] Journal entry in [`journal.md`](journal.md) dated the day of the runs: what was built, the store table, the memory table, how each was run.
   README `State` gains a stage B line; `outcome` stays empty (stage C and D follow).
 - [ ] Before pushing changes to `work/` docs that cite research notes, follow AGENTS.md § 3 rule 5 for any `research/` or `docs/` change; this stage should need none (stage C writes `lavapipe-render-time.md` § 6).
@@ -178,4 +188,5 @@ Neither layer 1 nor 2 times the loop.
 2. A sprite's props cut into `WalkStep`s must be restaged too; a list missed by `restage` would still address the baked buffers' numbering and draw garbage from the stream (Task 6's sprite case or Task 2's test).
 3. A streamed vertex's apex section must hold the same 16 B as the baked apex buffer (shape word included), or the shapes store changes (Task 1 test, Task 7 shapes hashes).
 4. With the switch off, `prepare` and `draw` must not allocate or copy anything new (no `stream_source`, no `restage`, no `write`).
+6. With the switch on, no world device buffer may be created (`plan_outlined`, Task 3); a stray `from_ir_outlined` for the world would hide the memory figure Task 7 reports.
 5. Growth must replace the buffer before the write and never write past `capacity` (`write_buffer` past the end is a wgpu validation error).
