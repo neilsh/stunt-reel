@@ -56,7 +56,44 @@ use crate::outline::{Outlined, outlined};
 use crate::palette::PaletteLut;
 use crate::pipeline::{LAYER_FIRST_ACTOR, LAYER_PROP, ModelUniform, RenderPipelines};
 use crate::renderer::UploadTimes;
+use crate::stream_buffers::StreamBuffers;
+use crate::world_stream::{StreamSource, WorldStream};
 use stunt_core::contracts::{NodeId, SodNode, arena_index};
+
+/// What a draw reads its geometry from: an uploaded model's chunks, or the world stream's buffer.
+#[derive(Clone, Copy, Debug)]
+enum Drawable<'a> {
+    Model(&'a GpuModel),
+    Stream(&'a StreamBuffers),
+}
+
+impl Drawable<'_> {
+    fn draw_slices(&self, rpass: &mut wgpu::RenderPass<'_>, meshes: &[GpuMeshSlice]) {
+        match self {
+            Self::Model(model) => model.draw_slices(rpass, meshes),
+            Self::Stream(buffers) => buffers.draw_slices(rpass, meshes),
+        }
+    }
+
+    fn draw_edges(&self, rpass: &mut wgpu::RenderPass<'_>, meshes: &[GpuMeshSlice]) {
+        match self {
+            Self::Model(model) => model.draw_edges(rpass, meshes),
+            Self::Stream(buffers) => buffers.draw_edges(rpass, meshes),
+        }
+    }
+}
+
+/// The world drawn from a per-frame stream ([`RenderOptions::world_stream`](crate::RenderOptions)).
+#[derive(Debug)]
+struct StreamedWorld {
+    /// The mesh the stream copies slices from, kept here because the CLI frees the scene's
+    /// copy once the renderer is open.
+    source: StreamSource,
+    stream: WorldStream,
+    buffers: StreamBuffers,
+    /// Whether a bug in the slice lists has been reported.
+    reported: bool,
+}
 
 /// Which uploaded model a prepared draw uses.
 #[derive(Clone, Copy, Debug)]
@@ -435,7 +472,10 @@ pub(crate) struct SceneRenderer {
     shapes: HashMap<u16, GpuModel>,
     /// Every sprite image of the scene as a unit square ([`sprite_ir`]).
     images: HashMap<u16, GpuModel>,
+    /// The world: its chunks uploaded, or with [`Self::streamed`] only its planned nodes and slices.
     world: Option<GpuModel>,
+    /// The world's stream, when it is drawn from one.
+    streamed: Option<StreamedWorld>,
     /// The actors' shape streams, decoded again under each actor's own light and bank.
     relit: RelitShapes,
     /// Each actor's shape decoded under its own light and bank, by actor index in the frame;
@@ -449,18 +489,24 @@ pub(crate) struct SceneRenderer {
     /// The frame's sprites the scenery walk places, in walk order, drawn after
     /// [`Self::prepared`].
     steps: Vec<WalkStep>,
-    /// How long [`Self::new`] spent uploading the shapes and the world.
+    /// How long [`Self::new`] spent uploading the shapes and the world; with the world streamed,
+    /// planning it and copying its mesh.
     upload_times: UploadTimes,
 }
 
 impl SceneRenderer {
     /// Uploads every shape and the world of `scene`.
     #[must_use]
+    #[expect(
+        clippy::print_stderr,
+        reason = "the renderer has no logger; the run must say a world fell back to the baked draw"
+    )]
     pub(crate) fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         pipelines: &RenderPipelines,
         scene: &FilmScene,
+        world_stream: bool,
     ) -> Self {
         let layout = &pipelines.model_bind_group_layout;
         // Shapes drawn per frame (actors and view-facing props such as the flat trees) take
@@ -480,13 +526,39 @@ impl SceneRenderer {
         let world_started = Instant::now();
         let placements = scene.world().map_or_default(WorldPlacements::new);
         // Each world prop vertex carries its shape word, which the plane's shape word reads.
+        let mut streamed = None;
         let world = scene.world().map(|w| {
+            let marks = placements.marks();
+            if world_stream {
+                // The stream copies slices out of the mesh, so no device buffer is made.
+                let limit = device.limits().max_buffer_size;
+                if let Some((model, edges)) =
+                    GpuModel::plan_outlined(limit, &w.ir, outlines_in_world, &marks)
+                {
+                    streamed = Some(StreamedWorld {
+                        source: StreamSource::new(
+                            w.ir.vertices.clone(),
+                            w.ir.indices.clone(),
+                            edges,
+                            w.prop_runs.clone(),
+                            w.ir.rank_spheres.clone(),
+                        ),
+                        stream: WorldStream::default(),
+                        buffers: StreamBuffers::default(),
+                        reported: false,
+                    });
+                    return model;
+                }
+                eprintln!(
+                    "[stuntreel] world stream: off for this world, which one buffer cannot hold"
+                );
+            }
             GpuModel::from_ir_outlined(
                 device,
                 queue,
                 &w.ir,
                 outlines_in_world,
-                &placements.marks(),
+                &marks,
                 &w.prop_runs,
             )
         });
@@ -499,6 +571,7 @@ impl SceneRenderer {
             shapes,
             images,
             world,
+            streamed,
             relit: scene.relit_shapes().clone(),
             lit: Vec::new(),
             uniforms: DrawUniforms::new(device),
@@ -732,7 +805,47 @@ impl SceneRenderer {
             }
         }
         self.place_sprites(placed, world_slices, &actor_draws);
+        self.stream_world(device, queue);
         self.uniforms.upload(device, queue, &self.model_layout);
+    }
+
+    /// Streams every world slice list of the frame (the world draw's ground, base and decals,
+    /// then each walk step's props) and writes the stream to its buffer, when the world is
+    /// drawn from one; the lists then address the stream.
+    ///
+    /// A slice outside the source is a bug, and no baked buffer exists to fall back to: the
+    /// frame draws no world, and the failure is reported once.
+    #[expect(
+        clippy::print_stderr,
+        reason = "the renderer has no logger; a bug here must show in a store check"
+    )]
+    fn stream_world(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let Some(streamed) = &mut self.streamed else {
+            return;
+        };
+        let mut lists: Vec<&mut Vec<GpuMeshSlice>> = Vec::new();
+        for draw in &mut self.prepared {
+            if matches!(draw.target, Target::World { .. }) {
+                lists.extend([&mut draw.ground, &mut draw.base, &mut draw.decals]);
+            }
+        }
+        for step in &mut self.steps {
+            lists.extend([&mut step.props.base, &mut step.props.decals]);
+        }
+        let source = streamed.source.source();
+        if streamed.stream.restage(&source, &mut lists).is_ok() {
+            streamed.buffers.write(device, queue, &streamed.stream);
+            return;
+        }
+        for list in lists {
+            list.clear();
+        }
+        if !streamed.reported {
+            streamed.reported = true;
+            eprintln!(
+                "[stuntreel] world stream: a world slice lies outside the mesh; drawing no world"
+            );
+        }
     }
 
     /// Puts `placed`, the sprites the scenery walk places (each with the placements it draws
@@ -932,9 +1045,11 @@ impl SceneRenderer {
         // The world's flat ground first, each slice over what is there, then its outline:
         // a run of lines that follows is a slice of its own, so no outline covers it.
         let world_ground = self.prepared.iter().find_map(|draw| match draw.target {
-            Target::World { uniform } if !draw.ground.is_empty() => {
-                Some((self.world.as_ref()?, draw, self.uniforms.binding(uniform)?))
-            }
+            Target::World { uniform } if !draw.ground.is_empty() => Some((
+                self.world_drawable()?,
+                draw,
+                self.uniforms.binding(uniform)?,
+            )),
             _ => None,
         });
         if let Some((world, draw, (bind_group, offset))) = world_ground {
@@ -971,14 +1086,29 @@ impl SceneRenderer {
         }
     }
 
-    /// The model, bind group and dynamic offset `target` draws through; `None` when the
+    /// What the world draws from: its stream when it has one, else its uploaded model.
+    fn world_drawable(&self) -> Option<Drawable<'_>> {
+        match &self.streamed {
+            Some(streamed) => Some(Drawable::Stream(&streamed.buffers)),
+            None => self.world.as_ref().map(Drawable::Model),
+        }
+    }
+
+    /// The geometry, bind group and dynamic offset `target` draws through; `None` when the
     /// model or the uniform is missing.
-    fn resolve(&self, target: Target) -> Option<(&GpuModel, &wgpu::BindGroup, u32)> {
+    fn resolve(&self, target: Target) -> Option<(Drawable<'_>, &wgpu::BindGroup, u32)> {
         let (model, uniform) = match target {
-            Target::World { uniform } => (self.world.as_ref()?, uniform),
-            Target::Shape { shape_id, uniform } => (self.shapes.get(&shape_id)?, uniform),
-            Target::Lit { actor, uniform } => (&self.lit.get(actor)?.as_ref()?.model, uniform),
-            Target::Image { image_id, uniform } => (self.images.get(&image_id)?, uniform),
+            Target::World { uniform } => (self.world_drawable()?, uniform),
+            Target::Shape { shape_id, uniform } => {
+                (Drawable::Model(self.shapes.get(&shape_id)?), uniform)
+            }
+            Target::Lit { actor, uniform } => (
+                Drawable::Model(&self.lit.get(actor)?.as_ref()?.model),
+                uniform,
+            ),
+            Target::Image { image_id, uniform } => {
+                (Drawable::Model(self.images.get(&image_id)?), uniform)
+            }
         };
         let (bind_group, offset) = self.uniforms.binding(uniform)?;
         Some((model, bind_group, offset))

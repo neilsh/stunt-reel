@@ -7,21 +7,23 @@
 //! stream needs no runs table. A slice of a split world is an error. Nothing draws from the
 //! stream yet.
 
-use std::ops::Range;
-
-use stunt_core::contracts::{SodVertex, arena_index};
+use stunt_core::contracts::{RankSphere, SodVertex, arena_index};
 use stunt_core::world::PropRun;
 
-use crate::mesh::{ApexVertex, GpuMeshSlice, apex_vertices};
-use crate::outline::Apex;
+use crate::mesh::{ApexVertex, GpuMeshSlice, apex_vertices, shaped};
+use crate::outline::{Apex, own_apexes_of};
 
 /// What a stream copies from: one unsplit model's buffers, as the baked upload holds them.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct WorldSource<'a> {
     /// The model's vertices.
     pub vertices: &'a [SodVertex],
-    /// Each vertex's apex, in `vertices`' order.
-    pub apex: &'a [Apex],
+    /// Each vertex's apex, in `vertices`' order; `None` when each is its own
+    /// ([`own_apexes_of`] over `rank_spheres`), as the world's are, which saves the copy.
+    pub apex: Option<&'a [Apex]>,
+    /// The model's rank spheres, ascending and disjoint, that give list-ranked vertices their
+    /// apex when `apex` is `None`.
+    pub rank_spheres: &'a [RankSphere],
     /// The model's index arena, into `vertices`.
     pub indices: &'a [u32],
     /// The model's outline indices, into `vertices`, as the one chunk's edge buffer holds them.
@@ -29,6 +31,55 @@ pub(crate) struct WorldSource<'a> {
     /// The model's prop runs, in vertex order: each streamed vertex takes the shape word of the
     /// run that holds its source vertex.
     pub prop_runs: &'a [PropRun],
+}
+
+/// What a [`WorldSource`] borrows, owned, for a renderer that streams the world after the scene
+/// has released its mesh. The apex is each vertex's own ([`own_apexes_of`]), so none is copied.
+#[derive(Debug, Default)]
+pub(crate) struct StreamSource {
+    /// The model's vertices.
+    pub vertices: Vec<SodVertex>,
+    /// The model's index arena, into `vertices`.
+    pub indices: Vec<u32>,
+    /// The model's outline indices, as the one chunk's edge buffer would hold them.
+    pub edges: Vec<u32>,
+    /// The model's prop runs, in vertex order.
+    pub prop_runs: Vec<PropRun>,
+    /// The model's rank spheres, ascending by first vertex.
+    pub rank_spheres: Vec<RankSphere>,
+}
+
+impl StreamSource {
+    /// A source of `vertices`, `indices`, `edges`, `prop_runs` and `rank_spheres`, the last
+    /// put in ascending order.
+    pub(crate) fn new(
+        vertices: Vec<SodVertex>,
+        indices: Vec<u32>,
+        edges: Vec<u32>,
+        prop_runs: Vec<PropRun>,
+        mut rank_spheres: Vec<RankSphere>,
+    ) -> Self {
+        rank_spheres.sort_by_key(|sphere| sphere.vertices.start);
+        Self {
+            vertices,
+            indices,
+            edges,
+            prop_runs,
+            rank_spheres,
+        }
+    }
+
+    /// The borrowed form [`WorldStream::restage`] reads.
+    pub(crate) fn source(&self) -> WorldSource<'_> {
+        WorldSource {
+            vertices: &self.vertices,
+            apex: None,
+            rank_spheres: &self.rank_spheres,
+            indices: &self.indices,
+            edges: &self.edges,
+            prop_runs: &self.prop_runs,
+        }
+    }
 }
 
 /// A slice that does not belong to the [`WorldSource`] it was streamed from: it is of another
@@ -50,8 +101,6 @@ pub(crate) struct WorldStream {
     pub indices: Vec<u32>,
     /// The slices' outline indices, rebased to the streamed vertices.
     pub edges: Vec<u32>,
-    /// The source vertex windows copied, in stream order.
-    pub windows: Vec<Range<usize>>,
     /// The streamed slices of the frame being restaged, before they replace the lists'.
     pub scratch: Vec<GpuMeshSlice>,
 }
@@ -102,7 +151,6 @@ impl WorldStream {
         self.apex.clear();
         self.indices.clear();
         self.edges.clear();
-        self.windows.clear();
     }
 
     /// Appends `slice`'s vertex window, rebased indices and rebased outline, and returns the
@@ -126,7 +174,10 @@ impl WorldStream {
             .vertices
             .get(range.clone())
             .ok_or(SliceOutsideSource)?;
-        if source.apex.get(range.clone()).is_none() {
+        if source
+            .apex
+            .is_some_and(|apex| apex.get(range.clone()).is_none())
+        {
             return Err(SliceOutsideSource);
         }
 
@@ -149,13 +200,17 @@ impl WorldStream {
         self.indices.extend(indices.iter().map(|&at| rebase(at)));
         self.edges.extend(edges.iter().map(|&at| rebase(at)));
         self.vertices.extend_from_slice(vertices);
-        self.apex.extend(apex_vertices(
-            source.apex,
-            std::slice::from_ref(&range),
-            source.prop_runs,
-        ));
-        if !range.is_empty() {
-            self.windows.push(range);
+        match source.apex {
+            Some(apex) => self.apex.extend(apex_vertices(
+                apex,
+                std::slice::from_ref(&range),
+                source.prop_runs,
+            )),
+            None => self.apex.extend(shaped(
+                own_apexes_of(source.vertices, range.clone(), source.rank_spheres),
+                range.clone(),
+                source.prop_runs,
+            )),
         }
         Ok(streamed)
     }
@@ -315,7 +370,8 @@ mod tests {
         assert!(!edges.is_empty());
         let source = WorldSource {
             vertices: &ir.vertices,
-            apex: &apex,
+            apex: Some(&apex),
+            rank_spheres: &[],
             indices: &ir.indices,
             edges: &edges,
             prop_runs: &[],
@@ -351,7 +407,8 @@ mod tests {
         let (edges, slices) = baked(ir);
         let source = WorldSource {
             vertices: &ir.vertices,
-            apex: &apex,
+            apex: Some(&apex),
+            rank_spheres: &[],
             indices: &ir.indices,
             edges: &edges,
             prop_runs: &[],
@@ -446,7 +503,8 @@ mod tests {
         ];
         let source = WorldSource {
             vertices: &ir.vertices,
-            apex: &apex,
+            apex: Some(&apex),
+            rank_spheres: &[],
             indices: &ir.indices,
             edges: &edges,
             prop_runs: &runs,
@@ -477,7 +535,8 @@ mod tests {
         let (edges, slices) = baked(ir);
         let source = WorldSource {
             vertices: &ir.vertices,
-            apex: &apex,
+            apex: Some(&apex),
+            rank_spheres: &[],
             indices: &ir.indices,
             edges: &edges,
             prop_runs: &[],
@@ -514,7 +573,8 @@ mod tests {
         let (edges, slices) = baked(ir);
         let source = WorldSource {
             vertices: &ir.vertices,
-            apex: &apex,
+            apex: Some(&apex),
+            rank_spheres: &[],
             indices: &ir.indices,
             edges: &edges,
             prop_runs: &[],
@@ -565,7 +625,8 @@ mod tests {
         let (edges, slices) = baked(ir);
         let source = WorldSource {
             vertices: &ir.vertices,
-            apex: &apex,
+            apex: Some(&apex),
+            rank_spheres: &[],
             indices: &ir.indices,
             edges: &edges,
             prop_runs: &[],
@@ -609,7 +670,8 @@ mod tests {
         let (edges, slices) = baked(ir);
         let source = WorldSource {
             vertices: &ir.vertices,
-            apex: &apex,
+            apex: Some(&apex),
+            rank_spheres: &[],
             indices: &ir.indices,
             edges: &edges,
             prop_runs: &[],
@@ -625,5 +687,57 @@ mod tests {
         assert_eq!(stream.restage(&source, &mut refs), Err(SliceOutsideSource));
         assert!(stream.vertices.is_empty() && stream.indices.is_empty());
         assert_eq!(lists, before);
+    }
+
+    #[test]
+    fn an_apex_left_out_is_each_vertexs_own_with_its_shape_word() {
+        use stunt_core::contracts::RankSphere;
+
+        let mut fixture = Fixture::world();
+        // List-ranked vertices in two spheres, the second given first as a world may.
+        for vertex in &mut fixture.ir.vertices[6..14] {
+            vertex.list_rank = 1;
+        }
+        fixture.ir.rank_spheres = vec![
+            RankSphere {
+                vertices: 10..14,
+                centre: [1.0, 2.0, 3.0],
+                radius: 4.0,
+            },
+            RankSphere {
+                vertices: 6..10,
+                centre: [-1.0, 0.5, 0.0],
+                radius: 2.0,
+            },
+        ];
+        let ir = &fixture.ir;
+        let own = crate::outline::own_apexes(ir);
+        assert!(own.iter().any(|apex| apex[3] == 4.0));
+        let (edges, slices) = baked(ir);
+        let runs = [PropRun {
+            first: 12,
+            end: 20,
+            shape: 3,
+        }];
+        let owned = StreamSource::new(
+            ir.vertices.clone(),
+            ir.indices.clone(),
+            edges.clone(),
+            runs.to_vec(),
+            ir.rank_spheres.clone(),
+        );
+        let given = WorldSource {
+            apex: Some(&own),
+            ..owned.source()
+        };
+        let (mut stream, mut copied) = (WorldStream::default(), WorldStream::default());
+        let lists = || (slices[1..5].iter().rev().copied(), [], []);
+        let (ground, base, decals) = lists();
+        rebuild(&mut stream, &owned.source(), ground, base, decals).expect("held");
+        let (ground, base, decals) = lists();
+        rebuild(&mut copied, &given, ground, base, decals).expect("held");
+        assert_eq!(bytes(&stream.apex), bytes(&copied.apex));
+        assert!(stream.apex.iter().any(|v| v.prop_shape == 4));
+        assert!(stream.apex.iter().any(|v| v.apex[3] == 2.0));
     }
 }
