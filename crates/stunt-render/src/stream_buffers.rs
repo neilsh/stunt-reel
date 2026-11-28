@@ -15,7 +15,7 @@ use crate::world_stream::WorldStream;
 
 /// The smallest buffer the stream creates, in bytes.
 ///
-/// The probe's largest frame is `3,019,984` B at a 28 B vertex and a 12 B apex (journal,
+/// The probe's largest frame is `3,019,984` B at a 28 B vertex with no apex stream (journal,
 /// 2026-11-23); at the 32 B vertex and 20 B apex on main it is `4,833,808` B, about `4.61` MiB:
 /// 8 MiB holds it. Another film, lens or viewport may need more, which [`grown_capacity`]
 /// handles.

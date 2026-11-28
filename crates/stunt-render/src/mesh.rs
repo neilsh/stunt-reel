@@ -439,8 +439,8 @@ impl GpuModel {
 
     /// The planning of [`Self::from_ir_outlined`] alone, for a device whose largest buffer is
     /// `max_buffer_size` bytes: the model, with no [`Self::chunks`] and so no device buffer, and
-    /// the outline list the one chunk's edge buffer would hold. `None` when the model would
-    /// split into more than one chunk, which the world stream does not follow.
+    /// the outline list the one chunk's edge buffer would hold. `None` when the plan splits
+    /// the model, which the world stream does not follow.
     pub(crate) fn plan_outlined(
         max_buffer_size: u64,
         ir: &SodModelIr,
