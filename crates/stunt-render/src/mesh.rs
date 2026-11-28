@@ -1228,6 +1228,7 @@ impl VisibleWalk<'_> {
         } else {
             stack.extend(self.roots);
         }
+        let gates = self.view.map(FrameGates::new);
         while let Some(node_id) = stack.pop() {
             let Some(node) = self.nodes.get(node_id.0 as usize) else {
                 continue;
@@ -1240,7 +1241,7 @@ impl VisibleWalk<'_> {
             {
                 continue;
             }
-            if !self.is_visible(&node.visibility) {
+            if !self.is_visible(&node.visibility, gates.as_ref()) {
                 continue;
             }
             for &mesh in &node.meshes {
@@ -1254,7 +1255,7 @@ impl VisibleWalk<'_> {
         }
     }
 
-    fn is_visible(&self, visibility: &VisibilityCondition) -> bool {
+    fn is_visible(&self, visibility: &VisibilityCondition, gates: Option<&FrameGates>) -> bool {
         match *visibility {
             // An angle cone is not tested here, so it defaults to visible.
             VisibilityCondition::Always | VisibilityCondition::AngleCone { .. } => true,
@@ -1274,24 +1275,179 @@ impl VisibleWalk<'_> {
                 ext,
                 splitdist,
                 near,
-            } => {
-                self.view
-                    .is_none_or(|v| v.lod_keeps_subtree(point, ext, splitdist))
-                    == near
-            }
+            } => gates.is_none_or(|g| g.lod_keeps_subtree(point, ext, splitdist)) == near,
             VisibilityCondition::BeyondDepth { point, depth } => {
-                self.view.is_none_or(|v| v.view_depth_exceeds(point, depth))
+                gates.is_none_or(|g| g.view_depth_exceeds(point, depth))
             }
-            VisibilityCondition::ScaleReach { point, scale_index } => self
-                .view
-                .is_none_or(|v| v.scale_reach_keeps(point, scale_index)),
+            VisibilityCondition::ScaleReach { point, scale_index } => {
+                gates.is_none_or(|g| g.scale_reach_keeps(point, scale_index))
+            }
         }
+    }
+}
+
+/// A camera's LOD-gate constants, computed once per walk for every node's gate.
+///
+/// Each method agrees with its [`CameraTransform`] namesake bit for bit: it repeats the
+/// namesake's operations in its order on words the namesake recomputes per call.
+#[derive(Clone, Copy)]
+struct FrameGates {
+    eye: [f32; 3],
+    forward: [f32; 3],
+    /// The length of `forward`, `<= 0.0` for a camera with no view direction.
+    len: f32,
+    /// The lens words of [`CameraTransform::lod_lens_words`].
+    mantissa: u16,
+    shift: u8,
+    /// `2 << shift`, the divisor of the zoomed depth.
+    depth_scale: f32,
+}
+
+impl FrameGates {
+    fn new(camera: &CameraTransform) -> Self {
+        let (mantissa, shift) = camera.lod_lens_words();
+        let forward = [
+            camera.target[0] - camera.eye[0],
+            camera.target[1] - camera.eye[1],
+            camera.target[2] - camera.eye[2],
+        ];
+        let len =
+            (forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2]).sqrt();
+        Self {
+            eye: camera.eye,
+            forward,
+            len,
+            mantissa,
+            shift,
+            depth_scale: f32::from(2u16 << shift),
+        }
+    }
+
+    /// `point`'s distance along the view axis; the caller has ruled out `len <= 0.0`.
+    fn along(&self, point: [f32; 3]) -> f32 {
+        ((point[0] - self.eye[0]) * self.forward[0]
+            + (point[1] - self.eye[1]) * self.forward[1]
+            + (point[2] - self.eye[2]) * self.forward[2])
+            / self.len
+    }
+
+    /// [`CameraTransform::lod_keeps_subtree`].
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "ext and splitdist are 16-bit words and the mantissa a u16, so the i64 maths cannot overflow"
+    )]
+    fn lod_keeps_subtree(&self, point: [f32; 3], ext: i32, splitdist: i32) -> bool {
+        if self.len <= 0.0 {
+            return true;
+        }
+        let depth = (self.along(point) / self.depth_scale).floor();
+        let half = i64::from(ext >> 1);
+        let split = i64::from(splitdist);
+        let threshold = if split < half {
+            split
+        } else {
+            half + (((split - half) * i64::from(self.mantissa)) >> 16)
+        };
+        depth <= threshold as f32
+    }
+
+    /// [`CameraTransform::view_depth_exceeds`].
+    fn view_depth_exceeds(&self, point: [f32; 3], depth: f32) -> bool {
+        if self.len <= 0.0 {
+            return true;
+        }
+        self.along(point) / self.depth_scale > depth
+    }
+
+    /// [`CameraTransform::scale_reach_keeps`].
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the coordinate is clamped to 0..=65535 first, PLAYONE's 16-bit high word"
+    )]
+    fn scale_reach_keeps(&self, point: [f32; 3], scale_index: u8) -> bool {
+        let largest = point
+            .iter()
+            .zip(&self.eye)
+            .map(|(p, e)| (p - e).abs())
+            .fold(0.0f32, f32::max);
+        let high = largest.clamp(0.0, 65535.0) as u16;
+        let s = 17u32.saturating_sub(high.leading_zeros());
+        let gap = (u32::from(scale_index).saturating_add(s)).saturating_sub(16);
+        gap <= u32::from(self.shift).saturating_add(7)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frame_gates_equal_the_camera_methods_over_a_spread_of_cameras() {
+        let eyes = [[0.0, 0.0, 0.0], [10.5, -3.25, 800.0], [-9000.0, 40.0, 17.0]];
+        let targets = [
+            [0.0, 0.0, 100.0],
+            [10.5, -3.25, 800.0],
+            [300.0, 50.0, -20.0],
+        ];
+        let lenses = [0u16, 1, 4096, 20480, 44236, 65535];
+        let coords = [
+            -70_000.0f32,
+            -8192.0,
+            -1200.0,
+            -1.0,
+            0.0,
+            0.5,
+            199.0,
+            200.0,
+            204.0,
+            1198.0,
+            1200.0,
+            8191.9,
+            8192.0,
+            16_383.0,
+            16_384.0,
+            30_000.0,
+            70_000.0,
+        ];
+        let mut checked = 0u32;
+        for (eye, target) in eyes.iter().zip(&targets).chain([(&eyes[0], &targets[1])]) {
+            for lens in lenses {
+                let camera = CameraTransform {
+                    eye: *eye,
+                    target: *target,
+                    lens,
+                    ..CameraTransform::default()
+                };
+                let gates = FrameGates::new(&camera);
+                for &x in &coords {
+                    for &z in &coords {
+                        let point = [x, x * 0.5 - z, z];
+                        for (ext, split) in [(400, 600), (400, 100), (0, 0), (65535, 65535)] {
+                            assert_eq!(
+                                gates.lod_keeps_subtree(point, ext, split),
+                                camera.lod_keeps_subtree(point, ext, split)
+                            );
+                        }
+                        for depth in [-50.0f32, 0.0, 50.0, 100.0, 800.0] {
+                            assert_eq!(
+                                gates.view_depth_exceeds(point, depth),
+                                camera.view_depth_exceeds(point, depth)
+                            );
+                        }
+                        for scale in [0u8, 7, 8, 9, 14, 20] {
+                            assert_eq!(
+                                gates.scale_reach_keeps(point, scale),
+                                camera.scale_reach_keeps(point, scale)
+                            );
+                        }
+                        checked += 1;
+                    }
+                }
+            }
+        }
+        assert!(checked > 5000);
+    }
 
     #[test]
     fn a_flattened_face_faces_the_eye_by_its_vertical_normal() {
