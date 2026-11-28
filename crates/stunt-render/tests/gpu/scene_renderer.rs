@@ -1508,3 +1508,75 @@ fn the_stream_buffer_grows_and_the_world_can_leave_the_view() {
         }
     });
 }
+
+/// A steep hill whose foot stands on the ground 5 km off and 6 m below the eye is drawn in front
+/// of the face 300 m behind it, as `CTRY`'s capture keeps the hill of #1197: its foot's snapped
+/// pixel must not slide its depth along the grazing ray past that face (ADR 0059). It keeps at
+/// least three quarters of the pixels it covers alone; the rest are the row of both feet, where
+/// the ground plane's depth bounds both faces and the one drawn first wins the tie.
+#[test]
+fn a_far_hill_stays_in_front_of_the_face_behind_it() {
+    use crate::draw_order::{film_looking_at, vertex};
+    const HILL: u8 = 192;
+    const FACE: u8 = 164;
+    common::gpu_test(|| {
+        let hill_pixels = |eye_y: f32, with_face: bool| {
+            let mut ir = SodModelIr::new("WORLD_SCENERY");
+            let face_normal = [0.0, 0.0, 1.0];
+            let hill_normal = [0.0, 0.707, 0.707];
+            ir.vertices = vec![
+                vertex([-900.0, 0.0, -5300.0], face_normal, FACE, SCENERY_TERRAIN),
+                vertex([900.0, 0.0, -5300.0], face_normal, FACE, SCENERY_TERRAIN),
+                vertex([900.0, 700.0, -5300.0], face_normal, FACE, SCENERY_TERRAIN),
+                vertex([-900.0, 700.0, -5300.0], face_normal, FACE, SCENERY_TERRAIN),
+                vertex([-200.0, 0.0, -5000.0], hill_normal, HILL, SCENERY_TERRAIN),
+                vertex([200.0, 0.0, -5000.0], hill_normal, HILL, SCENERY_TERRAIN),
+                vertex([0.0, 150.0, -5150.0], hill_normal, HILL, SCENERY_TERRAIN),
+            ];
+            // Both windings of each polygon, so neither is culled whichever way it projects.
+            let face = [0, 1, 2, 0, 2, 3, 2, 1, 0, 3, 2, 0];
+            let hill = [4, 5, 6, 6, 5, 4];
+            ir.indices = if with_face {
+                [&face[..], &hill[..]].concat()
+            } else {
+                hill.to_vec()
+            };
+            ir.allocate_node(
+                "WORLD_BASE",
+                None,
+                glam::Mat4::IDENTITY.to_cols_array(),
+                VisibilityCondition::Always,
+                NodeKind::Mesh {
+                    vertex_offset: 0,
+                    vertex_count: 7,
+                    index_offset: 0,
+                    index_count: u32::try_from(ir.indices.len()).unwrap(),
+                    is_decal: false,
+                },
+            );
+            ir.root_nodes = vec![ir.nodes[0].id];
+            let film =
+                film_looking_at([0.0, eye_y, 0.0], [0.0, eye_y, -1000.0], Vec::new(), 0x002D);
+            let scene = FilmScene::new(film, HashMap::new(), Some(world_of(ir)));
+            let mut test = common::gpu_or_skip_software(&scene)?;
+            let page = test.draw(&scene.frame(0.0));
+            Some(
+                page.indices()
+                    .iter()
+                    .map(|&index| usize::from(index == HILL))
+                    .sum::<usize>(),
+            )
+        };
+        let Some(alone) = hill_pixels(6.0, false) else {
+            return;
+        };
+        assert!(alone > 20, "the hill alone covers {alone} pixels");
+        for eye_y in [5.95, 6.0, 6.05] {
+            let drawn = hill_pixels(eye_y, true).expect("adapter");
+            assert!(
+                drawn * 4 >= alone * 3,
+                "the hill covers {drawn} pixels at eye height {eye_y} in front of the face, {alone} alone"
+            );
+        }
+    });
+}

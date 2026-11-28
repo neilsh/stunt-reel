@@ -92,6 +92,10 @@ pub(crate) struct RenderPipelines {
     /// Base mesh pipeline with zero depth bias and `Greater` depth compare (depth is reversed:
     /// nearer is larger).
     pub(crate) base_pipeline: wgpu::RenderPipeline,
+    /// [`Self::base_pipeline`] for the world's base slices: in the parity look its terrain
+    /// takes its depth per fragment from its own plane, so writing depth there turns off early
+    /// depth testing for this pipeline alone (ADR 0059).
+    pub(crate) terrain_pipeline: wgpu::RenderPipeline,
     /// The base pipeline with neither depth test nor depth write, for an `OP_ANIMATE` sprite
     /// drawn at its place in the scenery walk: over everything drawn before it, under
     /// whatever is drawn after (`research/playone-exe/scene-walk-actors.md`).
@@ -272,6 +276,14 @@ impl RenderPipelines {
             }
             Look::Diagnostic => ("vs_diagnostic", "vs_diagnostic_edge", "fs_diagnostic"),
         };
+        // The world's base slice draws terrain through entry points that take its depth per
+        // fragment from its own plane in the parity look (`vs_terrain`; ADR 0059); the other
+        // looks draw it as any other base geometry.
+        let (terrain_vertex, terrain_fragment) = match look {
+            Look::Mode13h if plane_format.is_some() => ("vs_terrain", "fs_terrain_plane"),
+            Look::Mode13h => ("vs_terrain", "fs_terrain"),
+            Look::Modern | Look::Diagnostic => (scene_vertex, scene_fragment),
+        };
         let sky_fragment_entry = match (look, plane_format.is_some()) {
             (Look::Mode13h, true) => "fs_sky_plane",
             (Look::Mode13h, false) => "fs_sky",
@@ -386,6 +398,15 @@ impl RenderPipelines {
             model_primitive,
             base_depth_stencil.clone(),
         );
+        let terrain_pipeline = create_pipeline(
+            device,
+            "stunt_mode13h_terrain_pipeline",
+            Some(&pipeline_layout),
+            vertex_state(&shader_module, terrain_vertex, &vertex_buffers),
+            fragment_state(&shader_module, terrain_fragment, &targets),
+            model_primitive,
+            base_depth_stencil.clone(),
+        );
         let sprite_pipeline = scene_pipeline(
             "stunt_mode13h_sprite_pipeline",
             model_primitive,
@@ -453,6 +474,7 @@ impl RenderPipelines {
             ground_pipeline,
             ground_edge_pipeline,
             base_pipeline,
+            terrain_pipeline,
             sprite_pipeline,
             decal_pipeline,
             shadow_pipeline,
