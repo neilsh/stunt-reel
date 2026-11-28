@@ -1,0 +1,82 @@
+== offset -2
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+540 uncovered 6191 2358 18 | x: 1 0 2 7 | y: 0 15 0 0 | shift +2 -2 0.265 +0.074
+540 uncovered region 62,0,319,68 6191 centre +59.3,-64.1 border yes | shift +2 -2 0.265 +0.074
+540 ocean 16 16 0 | x: 0 0 0 0 | y: 0 0 0 0 | shift +0 +0 0.000 +0.000
+540 ocean region 311,69,319,69 9 centre +155.5,-23.0 border yes | shift +0 +0 0.000 +0.000
+540 terrain 4265 2299 211 | x: 13 17 6 16 | y: 0 96 74 18 | shift -2 -2 0.613 +0.201
+540 terrain region 0,71,319,128 2860 centre -8.5,+11.1 border yes | shift +2 -2 0.579 +0.156
+540 prop 1615 1361 339 | x: 3 0 1 8 | y: 0 1 282 58 | shift -2 -2 0.707 +0.281
+540 prop region 0,125,319,139 714 centre -2.2,+39.6 border yes | shift -2 -2 0.911 +0.555
+540 actor 6379 4547 735 | x: 22 36 73 18 | y: 33 223 360 46 | shift -2 -1 0.270 +0.108
+540 actor region 10,45,266,115 5809 centre +11.6,-8.9 border no | shift -2 -1 0.241 +0.097
+== offset -1
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+540 uncovered 3832 1997 211 | x: 2 0 5 8 | y: 0 210 0 0 | shift +2 -2 0.562 +0.334
+540 uncovered region 87,0,319,67 3832 centre +70.2,-65.5 border yes | shift +2 -2 0.562 +0.334
+540 ocean 8 8 0 | x: 0 0 0 0 | y: 0 0 0 0 | shift +0 +0 0.000 +0.000
+540 ocean region 225,68,232,68 8 centre +69.0,-24.0 border no | shift +0 +0 0.000 +0.000
+540 terrain 2970 2089 867 | x: 15 23 11 13 | y: 0 232 601 12 | shift +2 -2 0.827 +0.387
+540 terrain region 0,70,319,127 1634 centre +4.9,+17.5 border yes | shift +2 -2 0.731 +0.359
+540 prop 1389 1304 479 | x: 4 1 2 8 | y: 0 7 427 47 | shift -2 -2 0.811 +0.367
+540 prop region 0,124,319,138 585 centre -0.9,+38.9 border yes | shift +2 -2 0.975 +0.575
+540 actor 6286 4428 843 | x: 33 39 76 32 | y: 42 278 402 49 | shift -2 -1 0.319 +0.116
+540 actor region 0,44,289,114 5854 centre +28.7,-9.3 border yes | shift -2 -1 0.281 +0.102
+== offset 0
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+540 uncovered 1540 1410 713 | x: 23 0 1 33 | y: 0 708 0 0 | shift +2 -2 0.868 +0.496
+540 uncovered region 112,0,319,66 1540 centre +81.0,-66.6 border yes | shift +2 -2 0.868 +0.496
+540 ocean 9 9 0 | x: 0 0 0 0 | y: 0 0 0 0 | shift +0 +0 0.000 +0.000
+540 ocean region 247,67,255,67 9 centre +91.5,-25.0 border no | shift +0 +0 0.000 +0.000
+540 terrain 1704 1639 1079 | x: 16 54 55 32 | y: 3 294 650 69 | shift -2 -1 0.793 +0.249
+540 terrain region 0,69,319,126 879 centre -24.8,+9.5 border yes | shift -2 -1 0.778 +0.215
+540 prop 896 892 701 | x: 5 13 14 10 | y: 0 203 458 41 | shift -1 -1 0.893 +0.285
+540 prop region 0,143,319,184 299 centre +3.8,+72.0 border yes | shift -2 -1 0.851 +0.155
+540 actor 3830 3490 1128 | x: 46 68 144 54 | y: 36 456 457 49 | shift -1 -1 0.529 +0.165
+540 actor region 45,43,313,113 3515 centre +47.0,-9.7 border no | shift -1 -1 0.500 +0.155
+== offset 1
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+540 uncovered 613 474 373 | x: 0 0 0 3 | y: 0 373 0 0 | shift +2 -1 0.877 +0.125
+540 uncovered region 137,0,319,65 613 centre +91.3,-68.3 border yes | shift +2 -1 0.877 +0.125
+540 ocean 10 10 0 | x: 0 0 0 0 | y: 0 0 0 0 | shift +0 +0 0.000 +0.000
+540 ocean region 270,66,279,66 10 centre +115.0,-26.0 border no | shift +0 +0 0.000 +0.000
+540 terrain 2987 1023 479 | x: 15 20 17 10 | y: 40 103 305 18 | shift +0 -1 0.754 +0.032
+540 terrain region 0,0,223,66 1615 centre -63.5,-56.5 border yes | shift +0 -2 0.551 +0.024
+540 prop 466 465 376 | x: 8 14 6 11 | y: 0 3 366 20 | shift +0 +0 0.788 +0.000
+540 prop region 0,142,319,184 211 centre +3.6,+71.5 border yes | shift -1 -1 0.818 +0.036
+540 actor 6266 4192 858 | x: 45 44 91 26 | y: 47 250 435 43 | shift -1 -1 0.344 +0.084
+540 actor region 0,42,319,113 6080 centre +51.0,-10.2 border yes | shift -1 -1 0.273 +0.063
+== offset 2
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+540 uncovered 23 18 6 | x: 0 0 0 3 | y: 0 6 0 0 | shift +2 +0 0.991 +0.002
+540 uncovered region 161,0,319,64 23 centre +101.7,-69.9 border yes | shift +2 +0 0.991 +0.002
+540 ocean 9 9 0 | x: 0 0 0 0 | y: 0 0 0 0 | shift +0 +0 0.000 +0.000
+540 ocean region 294,65,302,65 9 centre +138.5,-27.0 border no | shift +0 +0 0.000 +0.000
+540 terrain 5092 1358 535 | x: 18 25 21 13 | y: 111 85 149 164 | shift -2 +0 0.659 +0.006
+540 terrain region 0,0,246,66 3108 centre -53.1,-57.5 border yes | shift -2 -2 0.457 +0.016
+540 prop 284 279 183 | x: 5 13 3 9 | y: 72 0 56 53 | shift -1 +0 0.874 +0.001
+540 prop region 24,63,205,67 149 centre -46.0,-25.8 border no | shift -1 +0 0.386 +0.004
+540 actor 6750 4369 692 | x: 72 46 54 23 | y: 42 179 320 48 | shift +1 -1 0.274 +0.037
+540 actor region 229,41,319,111 3467 centre +116.2,-18.4 border yes | shift -2 +2 0.152 +0.012
+== offset 3
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+540 uncovered 313 313 313 | x: 0 0 0 0 | y: 309 4 0 0 | shift +2 +1 0.997 +0.251
+540 uncovered region 186,0,319,63 313 centre +111.6,-72.3 border yes | shift +2 +1 0.997 +0.251
+540 ocean 3 3 0 | x: 0 0 0 0 | y: 0 0 0 0 | shift +0 -2 1.000 +1.000
+540 ocean region 317,64,319,64 3 centre +158.5,-28.0 border yes | shift +0 -2 1.000 +1.000
+540 terrain 7572 1510 457 | x: 9 19 14 10 | y: 123 65 19 231 | shift -2 +1 0.642 +0.019
+540 terrain region 0,0,269,65 4719 centre -40.8,-58.1 border yes | shift -2 -2 0.393 +0.010
+540 prop 856 795 571 | x: 3 1 1 9 | y: 161 0 25 398 | shift -2 +1 0.813 +0.162
+540 prop region 0,142,319,184 275 centre +2.6,+71.0 border yes | shift -2 +1 0.820 +0.074
+540 actor 6289 4240 641 | x: 54 50 21 29 | y: 32 146 294 86 | shift +2 -1 0.241 +0.023
+540 actor region 16,58,228,113 3264 centre -37.2,-4.6 border no | shift +2 -1 0.245 +0.063
+== offset 4
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+540 uncovered 436 235 15 | x: 0 0 0 0 | y: 15 0 0 0 | shift +0 +2 1.000 +0.258
+540 uncovered region 211,0,319,44 436 centre +120.0,-75.5 border yes | shift +0 +2 1.000 +0.258
+540 terrain 10071 1499 201 | x: 3 5 11 5 | y: 5 48 3 136 | shift -2 +0 0.618 +0.002
+540 terrain region 0,0,292,64 6220 centre -28.9,-58.7 border yes | shift -2 -2 0.364 +0.006
+540 prop 1437 1047 377 | x: 0 7 1 4 | y: 0 0 16 374 | shift -2 +2 0.726 +0.185
+540 prop region 0,141,319,184 583 centre +2.4,+70.7 border yes | shift +1 +1 0.805 +0.239
+540 actor 5216 3808 724 | x: 59 55 24 37 | y: 45 131 285 165 | shift +2 -1 0.259 +0.034
+540 actor region 37,58,226,113 3126 centre -28.7,-5.2 border no | shift +2 -1 0.257 +0.080

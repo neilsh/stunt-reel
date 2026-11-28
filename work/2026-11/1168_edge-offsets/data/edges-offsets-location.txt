@@ -1,0 +1,98 @@
+== offset -2
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+2003 ocean 45 45 42 | x: 3 6 0 0 | y: 3 39 0 0 | shift -1 -1 0.942 +0.019
+2003 ocean region 0,34,319,43 45 centre -23.4,-55.1 border yes | shift -1 -1 0.942 +0.019
+2003 terrain 2314 946 511 | x: 4 22 25 48 | y: 150 47 11 261 | shift +0 +1 0.682 +0.084
+2003 terrain region 58,81,319,132 1675 centre +21.2,+21.4 border yes | shift -2 +2 0.807 +0.205
+2003 prop 17169 10723 3860 | x: 156 544 85 542 | y: 1484 625 979 702 | shift +0 +0 0.481 +0.000
+2003 prop region 0,37,319,184 17161 centre -4.5,+21.3 border yes | shift +0 +0 0.481 +0.000
+2080 ocean 54 54 50 | x: 4 7 1 0 | y: 7 48 0 0 | shift -1 -1 0.925 +0.012
+2080 ocean region 0,34,319,46 54 centre -19.6,-54.7 border yes | shift -1 -1 0.942 +0.031
+2080 terrain 89 87 47 | x: 0 0 2 23 | y: 13 23 0 0 | shift +2 +0 0.856 +0.072
+2080 terrain region 203,41,319,52 24 centre +116.4,-47.3 border yes | shift +2 -1 0.971 +0.061
+2080 prop 18539 10165 2876 | x: 112 423 119 619 | y: 1082 519 196 397 | shift +0 +0 0.518 +0.000
+2080 prop region 0,38,319,184 18537 centre -0.9,+21.5 border yes | shift +0 +0 0.518 +0.000
+== offset -1
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+2003 ocean 42 42 40 | x: 4 6 0 0 | y: 1 38 0 0 | shift -1 -1 0.944 +0.015
+2003 ocean region 0,34,319,43 42 centre -23.2,-55.1 border yes | shift -1 -1 0.944 +0.015
+2003 terrain 1511 678 293 | x: 5 31 27 80 | y: 155 41 34 8 | shift +0 +0 0.714 +0.000
+2003 terrain region 55,81,319,134 1045 centre +19.4,+21.4 border yes | shift -1 +1 0.808 +0.064
+2003 prop 13301 8607 2928 | x: 111 601 83 578 | y: 1230 728 118 220 | shift +0 +0 0.583 +0.000
+2003 prop region 0,36,319,184 13293 centre -4.5,+21.3 border yes | shift +0 +0 0.583 +0.000
+2080 ocean 50 50 48 | x: 4 7 1 0 | y: 6 47 0 0 | shift -1 -1 0.928 +0.009
+2080 ocean region 0,34,319,42 50 centre -12.2,-55.2 border yes | shift -1 -1 1.000 +0.090
+2080 terrain 62 59 36 | x: 0 0 3 24 | y: 3 22 0 0 | shift +2 +0 0.907 +0.065
+2080 terrain region 203,41,319,52 20 centre +116.4,-47.3 border yes | shift +2 +0 0.976 +0.052
+2080 prop 14802 8536 3145 | x: 115 473 127 688 | y: 1005 664 238 490 | shift +0 +0 0.594 +0.000
+2080 prop region 0,38,319,184 14800 centre -1.0,+21.5 border yes | shift +0 +0 0.594 +0.000
+== offset 0
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+2003 ocean 42 42 40 | x: 4 6 0 0 | y: 1 38 0 0 | shift -1 -1 0.943 +0.015
+2003 ocean region 0,34,319,43 42 centre -23.2,-55.1 border yes | shift -1 -1 0.943 +0.015
+2003 terrain 736 462 153 | x: 4 30 31 63 | y: 26 44 18 13 | shift +0 +0 0.803 +0.000
+2003 terrain region 52,82,319,137 489 centre +19.4,+24.2 border yes | shift -2 +2 0.861 +0.037
+2003 prop 9151 6301 2776 | x: 131 600 83 544 | y: 801 918 131 316 | shift +0 +0 0.695 +0.000
+2003 prop region 0,36,319,184 9142 centre -4.2,+20.8 border yes | shift +0 +0 0.696 +0.000
+2080 ocean 49 49 48 | x: 4 5 1 0 | y: 6 47 0 0 | shift -1 -1 0.927 +0.006
+2080 ocean region 0,34,319,42 49 centre -12.2,-55.2 border yes | shift -1 -2 1.000 +0.088
+2080 terrain 58 57 29 | x: 0 0 2 21 | y: 2 18 0 0 | shift +1 +0 0.879 +0.024
+2080 terrain region 203,41,319,52 14 centre +115.9,-47.4 border yes | shift +2 -1 0.976 +0.031
+2080 prop 9716 6187 2907 | x: 163 541 142 638 | y: 665 723 222 634 | shift +0 +0 0.700 +0.000
+2080 prop region 0,37,319,184 9716 centre -1.0,+21.5 border yes | shift +0 +0 0.700 +0.000
+== offset 1
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+2003 ocean 41 41 40 | x: 2 4 0 0 | y: 1 39 0 0 | shift +0 -1 0.942 +0.012
+2003 ocean region 0,34,319,43 41 centre -23.2,-55.1 border yes | shift +0 -1 0.942 +0.012
+2003 terrain 161 161 143 | x: 0 28 28 30 | y: 31 55 39 11 | shift +0 +0 0.933 +0.000
+2003 terrain region 49,82,319,140 45 centre +18.6,+25.6 border yes | shift +0 +0 0.972 +0.000
+2003 prop 3981 3964 2813 | x: 190 322 164 251 | y: 664 1268 607 112 | shift +0 +0 0.799 +0.000
+2003 prop region 0,37,319,184 3981 centre -4.2,+20.7 border yes | shift +0 +0 0.799 +0.000
+2080 ocean 49 49 49 | x: 5 4 1 0 | y: 5 49 0 0 | shift +0 -1 0.929 +0.008
+2080 ocean region 0,34,319,42 49 centre -12.0,-55.2 border yes | shift +0 -1 1.000 +0.088
+2080 terrain 69 69 43 | x: 0 0 6 13 | y: 0 39 0 0 | shift +0 +0 0.830 +0.000
+2080 terrain region 293,55,311,59 21 centre +141.8,-34.5 border no | shift +0 -1 0.467 +0.167
+2080 prop 3724 3717 3126 | x: 161 301 240 312 | y: 444 1510 378 532 | shift +0 +0 0.819 +0.000
+2080 prop region 0,38,319,184 3722 centre -1.0,+21.5 border yes | shift +0 +0 0.819 +0.000
+== offset 2
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+2003 ocean 39 39 38 | x: 2 3 0 0 | y: 0 38 0 0 | shift +0 -1 0.944 +0.010
+2003 ocean region 0,34,319,43 39 centre -23.0,-55.2 border yes | shift +0 -1 0.944 +0.010
+2003 terrain 1239 938 288 | x: 6 21 46 30 | y: 33 179 48 8 | shift +1 -2 0.674 +0.065
+2003 terrain region 46,83,319,143 987 centre +18.7,+28.5 border yes | shift +0 -2 0.675 +0.114
+2003 prop 8694 7271 3810 | x: 491 238 434 177 | y: 601 2122 560 61 | shift +0 +0 0.631 +0.000
+2003 prop region 0,37,319,184 8687 centre -4.1,+20.2 border yes | shift +0 +0 0.631 +0.000
+2080 ocean 48 48 48 | x: 5 4 1 0 | y: 5 48 0 0 | shift +0 -1 0.926 +0.003
+2080 ocean region 0,34,319,41 48 centre -11.9,-55.2 border yes | shift +0 -1 1.000 +0.086
+2080 terrain 151 151 120 | x: 0 0 15 12 | y: 35 108 0 0 | shift -1 -1 0.840 +0.223
+2080 terrain region 202,41,319,51 86 centre +112.8,-47.1 border yes | shift +0 -1 0.956 +0.299
+2080 prop 9759 7600 4009 | x: 339 267 531 273 | y: 384 2007 958 111 | shift +0 -1 0.674 +0.052
+2080 prop region 0,38,319,184 9758 centre -1.0,+21.7 border yes | shift +0 -1 0.674 +0.053
+== offset 3
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+2003 ocean 38 38 38 | x: 2 3 0 0 | y: 0 38 0 0 | shift +0 -1 1.000 +0.063
+2003 ocean region 0,34,319,44 38 centre -24.8,-55.0 border yes | shift +0 -1 1.000 +0.064
+2003 terrain 2543 1040 263 | x: 6 17 35 34 | y: 21 177 41 8 | shift +0 -1 0.610 +0.049
+2003 terrain region 42,84,319,147 2183 centre +17.3,+32.0 border yes | shift +2 -2 0.569 +0.050
+2003 prop 11336 8842 3500 | x: 435 231 422 161 | y: 323 2228 327 57 | shift +0 -1 0.553 +0.023
+2003 prop region 0,36,319,184 11331 centre -3.8,+19.6 border yes | shift +0 -1 0.553 +0.023
+2080 ocean 51 51 50 | x: 7 6 1 0 | y: 6 49 0 0 | shift +1 -1 0.924 +0.006
+2080 ocean region 0,34,319,41 51 centre -10.8,-55.1 border yes | shift +0 -2 0.998 +0.090
+2080 terrain 160 158 118 | x: 0 0 17 10 | y: 34 104 0 0 | shift -1 -1 0.835 +0.229
+2080 terrain region 203,41,319,52 92 centre +113.3,-47.1 border yes | shift -1 -1 0.951 +0.300
+2080 prop 14852 9500 3730 | x: 296 265 495 244 | y: 254 2180 696 85 | shift +0 -1 0.597 +0.067
+2080 prop region 0,38,319,184 14849 centre -1.0,+21.7 border yes | shift +0 -1 0.597 +0.067
+== offset 4
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+2003 ocean 37 37 37 | x: 2 2 0 0 | y: 0 37 0 0 | shift +0 -1 1.000 +0.062
+2003 ocean region 0,34,319,44 37 centre -24.7,-55.0 border yes | shift +0 -1 1.000 +0.062
+2003 terrain 3669 1389 474 | x: 16 32 32 40 | y: 17 125 280 12 | shift +2 -2 0.543 +0.127
+2003 terrain region 39,84,319,150 3265 centre +17.1,+32.8 border yes | shift +1 -2 0.495 +0.155
+2003 prop 13544 9574 3120 | x: 414 216 429 120 | y: 316 1970 176 109 | shift +0 -1 0.514 +0.025
+2003 prop region 0,36,319,184 13538 centre -3.9,+19.3 border yes | shift +0 -1 0.514 +0.025
+2080 ocean 51 51 50 | x: 7 5 1 0 | y: 6 49 0 0 | shift +1 -1 0.926 +0.008
+2080 ocean region 0,34,319,41 51 centre -10.7,-55.1 border yes | shift +1 -1 1.000 +0.091
+2080 terrain 186 185 145 | x: 0 0 17 13 | y: 52 118 0 0 | shift -2 -1 0.824 +0.276
+2080 terrain region 203,41,319,52 100 centre +113.6,-47.0 border yes | shift -2 -1 0.943 +0.322
+2080 prop 18944 11222 3304 | x: 304 201 449 184 | y: 274 2096 347 167 | shift +0 -1 0.504 +0.057
+2080 prop region 0,38,319,184 18941 centre -1.1,+21.7 border yes | shift +0 -1 0.504 +0.057

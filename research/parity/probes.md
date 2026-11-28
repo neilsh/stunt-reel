@@ -1,5 +1,5 @@
 ---
-summary: "Procedures for diagnosing one parity discrepancy: `parity_probe.py` crop, shift, iou, retime, index and register, `DBG_` switch sweeps via `mise run sweep`, capture-side experiments, and environment pitfalls."
+summary: "Procedures for diagnosing one parity discrepancy: `parity_probe.py` crop, shift, iou, retime, index, register and edges, `DBG_` switch sweeps via `mise run sweep`, capture-side experiments, and environment pitfalls."
 sidebar_label: "Parity probes"
 ---
 # Parity Probes: Diagnosing One Discrepancy
@@ -341,3 +341,23 @@ Each row prints the tick, the compared pixel count and the agreement as rendered
 Ties go to the smaller move.
 A page with no backdrop edge prints `0 no backdrop edges`.
 What it found on the readout ticks is [`framing-and-actors.md` § 4](framing-and-actors.md#4-background-misregistration-is-neither-one-time-offset-nor-one-page-shift).
+
+## 12. Edge offsets (`edges`)
+
+```bash
+mise run parity-probe -- edges --ours build/parity/ours/location_current --reference captures/vault-location/frames --ticks 2003,2080 [--reach 2]
+```
+
+For each captured film tick it asks which way, and how far, the pixels a layer draws beside an index edge sit from the capture's.
+A pixel is mismatched when its palette index differs from the capture's and the readout mask (button bar, cursor, timer) leaves it in.
+Each count is per render layer class, grouped as the index map groups them (`uncovered`, `ocean`, `terrain`, `prop`, `actor`); the index map's credits and unknown layers are left out, so a credits pixel counts nowhere.
+A pixel our render leaves uncovered where the capture draws an object counts under `uncovered`.
+A class line prints the tick, the class, its mismatched pixels, those of them within a pixel of an index change in our page, and those of the latter with a four-neighbour where the capture shows our index; then, per axis, the four-neighbours counted on the low side of the view centre (left, or above) toward it and away from it, and on the high side the same.
+The view centre is half the view's width and rows, (160, 92.5) for the 320 × 185 view (our optical axis; `PLAYONE`'s projection centre is the pixel (160, 92)), against pixel centres, so row 92 counts on neither side, while column 160, onto which `PLAYONE` truncates offsets of under a column either way, counts on the high side.
+Last comes the best whole-class shift in ±`--reach` at 1 px steps, as `dx dy agreement gain`, over the class's pixels beside an edge (our pixel at `(x, y)` against the capture's at `(x + dx, y + dy)`, as for `register`; ties to the smaller move).
+Below it a `region` line gives the class's 4-connected region with the most mismatched pixels: its box, that count, its centroid's offset from the view centre, whether it touches the view's border, and its own best shift.
+Touching shapes of one class are one region, since the probe reads no shape plane.
+`shift` (section 2) tries even offsets only, so it cannot tell a one-pixel move from none; this probe can.
+A move toward the centre on both sides is truncation's signature ([`sod-vm-lines-spans.md` § 8.14](../playone-exe/sod-vm-lines-spans.md#814-projected-points-are-truncated-toward-the-centre)); one sign on both sides with a whole-class gain is a page or camera offset.
+`--offset k` reads our page `k` ticks after the one the scorer pairs, to separate a timing error from an edge's placement.
+What it found on #1168's frames is [`framing-and-actors.md` § 4](framing-and-actors.md#4-background-misregistration-is-neither-one-time-offset-nor-one-page-shift).

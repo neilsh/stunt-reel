@@ -1,0 +1,39 @@
+location 2003 {'film_tick': 1981, 'slot_clock': 1980, 'slot_ticks': 0}
+location 2003 {'film_tick': 1992, 'slot_clock': 1991, 'slot_ticks': 1}
+location 2003 {'film_tick': 2003, 'slot_clock': 2002, 'slot_ticks': 1}
+location 2003 {'film_tick': 2015, 'slot_clock': 2014, 'slot_ticks': 1}
+location 2003 {'film_tick': 2025, 'slot_clock': 2024, 'slot_ticks': 1}
+location 2080 {'film_tick': 2059, 'slot_clock': 2058, 'slot_ticks': 1}
+location 2080 {'film_tick': 2069, 'slot_clock': 2068, 'slot_ticks': 1}
+location 2080 {'film_tick': 2080, 'slot_clock': 2079, 'slot_ticks': 1}
+location 2080 {'film_tick': 2091, 'slot_clock': 2090, 'slot_ticks': 0}
+location 2080 {'film_tick': 2102, 'slot_clock': 2101, 'slot_ticks': 1}
+location render-tag histogram [(-2, 2), (-1, 112), (0, 509), (1, 122)]
+intro 1343 {'film_tick': 1321, 'slot_clock': 1321, 'slot_ticks': 1}
+intro 1343 {'film_tick': 1333, 'slot_clock': 1332, 'slot_ticks': 1}
+intro 1343 {'film_tick': 1343, 'slot_clock': 1342, 'slot_ticks': 1}
+intro 1343 {'film_tick': 1355, 'slot_clock': 1354, 'slot_ticks': 1}
+intro 1343 {'film_tick': 1365, 'slot_clock': 1364, 'slot_ticks': 1}
+intro 1508 {'film_tick': 1486, 'slot_clock': 1485, 'slot_ticks': 0}
+intro 1508 {'film_tick': 1497, 'slot_clock': 1497, 'slot_ticks': 1}
+intro 1508 {'film_tick': 1508, 'slot_clock': 1507, 'slot_ticks': 0}
+intro 1508 {'film_tick': 1521, 'slot_clock': 1521, 'slot_ticks': 0}
+intro 1508 {'film_tick': 1530, 'slot_clock': 1530, 'slot_ticks': 0}
+intro 2696 {'film_tick': 2674, 'slot_clock': 2674, 'slot_ticks': 1}
+intro 2696 {'film_tick': 2685, 'slot_clock': 2684, 'slot_ticks': 1}
+intro 2696 {'film_tick': 2696, 'slot_clock': 2696, 'slot_ticks': 1}
+intro 2696 {'film_tick': 2707, 'slot_clock': 2706, 'slot_ticks': 0}
+intro 2696 {'film_tick': 2718, 'slot_clock': 2717, 'slot_ticks': 1}
+intro render-tag histogram [(-2, 13), (-1, 50), (0, 186), (1, 98)]
+land 540 {'film_tick': 518, 'slot_clock': 518, 'slot_ticks': 1}
+land 540 {'film_tick': 529, 'slot_clock': 529, 'slot_ticks': 1}
+land 540 {'film_tick': 540, 'slot_clock': 540, 'slot_ticks': 1}
+land 540 {'film_tick': 551, 'slot_clock': 551, 'slot_ticks': 1}
+land 540 {'film_tick': 562, 'slot_clock': 562, 'slot_ticks': 0}
+land render-tag histogram [(-2, 1), (-1, 7), (0, 82), (1, 13)]
+bomb 2971 {'film_tick': 2949, 'slot_clock': 2949, 'slot_ticks': 1}
+bomb 2971 {'film_tick': 2961, 'slot_clock': 2960, 'slot_ticks': 1}
+bomb 2971 {'film_tick': 2971, 'slot_clock': 2971, 'slot_ticks': 2}
+bomb 2971 {'film_tick': 2983, 'slot_clock': 2982, 'slot_ticks': 1}
+bomb 2971 {'film_tick': 2993, 'slot_clock': 2992, 'slot_ticks': 1}
+bomb render-tag histogram [(-1, 72), (0, 205), (1, 62)]

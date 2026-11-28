@@ -10,6 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 lazy from collections.abc import Iterator
 
+import numpy as np
 import pytest
 
 from render_helpers import tick_entry
@@ -572,3 +573,93 @@ def test_backdrop_mask_with_props_keeps_the_prop_layer() -> None:
     assert not parity_probe.backdrop_mask(layers, width, rows, pad=1).any()
     kept = (*parity_probe.BACKDROP_LAYERS, LAYER_PROP)
     assert parity_probe.backdrop_mask(layers, width, rows, pad=1, kept=kept).all()
+
+
+def _planes(
+    width: int, rows: int, boxes: list[tuple[int, int, int, int, int, int]]
+) -> tuple[bytearray, list[int]]:
+    """Index 1 on layer 0 everywhere, then each ``(x0, y0, x1, y1, index, layer)`` box inclusive."""
+    indices = bytearray([1] * (width * rows))
+    layers = [0] * (width * rows)
+    for x0, y0, x1, y1, index, layer in boxes:
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                indices[y * width + x] = index
+                layers[y * width + x] = layer
+    return indices, layers
+
+
+def _by_name(result: list[parity_probe.LayerEdges]) -> dict[str, parity_probe.LayerEdges]:
+    return {layer.name: layer for layer in result}
+
+
+def test_edges_finds_a_one_pixel_shift_of_one_layer_that_shift_cannot() -> None:
+    width, rows = 40, 20
+    boxes = [(2, 12, 10, 17, 5, 2), (25, 3, 33, 8, 9, 3)]
+    ours, layers = _planes(width, rows, boxes)
+    capture, _ = _planes(width, rows, [boxes[0], (26, 3, 34, 8, 9, 3)])
+    ignore = np.zeros((rows, width), dtype=bool)
+    found = _by_name(
+        parity_probe.edge_offsets(bytes(ours), layers, bytes(capture), ignore, width, rows)
+    )
+    assert found["prop"].shift[:3] == (1, 0, 1.0)
+    assert found["terrain"].shift[:2] == (0, 0)
+    assert found["terrain"].mismatched == 0
+    # Right of the centre, a move of +1 in x is away from it.
+    assert found["prop"].moves["x", "hi", "away"] == found["prop"].near == 6
+    assert found["prop"].moves["x", "hi", "toward"] == 0
+    # The actor search's world shift tries even offsets only.
+    dx, _, _ = parity_probe.world_shift(bytes(ours), bytes(capture), [], width, rows, reach=2)
+    assert dx in (-2, 0, 2)
+
+
+def test_edges_names_the_one_object_that_moved_and_where_it_sits() -> None:
+    width, rows = 40, 20
+    left, right = (3, 4, 9, 9, 9, 3), (26, 10, 35, 16, 7, 3)
+    ours, layers = _planes(width, rows, [left, right])
+    capture, _ = _planes(width, rows, [(3, 3, 9, 8, 9, 3), right])
+    ignore = np.zeros((rows, width), dtype=bool)
+    prop = _by_name(
+        parity_probe.edge_offsets(bytes(ours), layers, bytes(capture), ignore, width, rows)
+    )["prop"]
+    assert prop.component is not None
+    assert prop.component.box == (3, 4, 9, 9)
+    assert prop.component.shift[:3] == (0, -1, 1.0)
+    assert prop.component.offset == pytest.approx((6.5 - 20.0, 7.0 - 10.0))
+    assert not prop.component.border
+    # Above the centre, a move of -1 in y is away from it.
+    assert prop.moves["y", "lo", "away"] == 7
+
+
+def test_edges_counts_a_move_toward_the_centre_on_both_sides() -> None:
+    width, rows = 40, 20
+    ours, layers = _planes(width, rows, [(5, 6, 12, 13, 9, 3), (27, 6, 34, 13, 9, 3)])
+    capture, _ = _planes(width, rows, [(6, 6, 13, 13, 9, 3), (26, 6, 33, 13, 9, 3)])
+    ignore = np.zeros((rows, width), dtype=bool)
+    found = _by_name(
+        parity_probe.edge_offsets(bytes(ours), layers, bytes(capture), ignore, width, rows)
+    )
+    for name in ("prop", "uncovered"):
+        moves = found[name].moves
+        assert moves["x", "lo", "toward"] == moves["x", "hi", "toward"] == 8
+        assert moves["x", "lo", "away"] == moves["x", "hi", "away"] == 0
+    # No single whole-layer shift explains moves of opposite sign.
+    assert found["prop"].shift[2] < 1.0
+
+
+def test_edges_leaves_out_ignored_pixels_and_marks_an_object_on_the_border() -> None:
+    width, rows = 40, 20
+    ours, layers = _planes(width, rows, [(0, 4, 6, 9, 9, 3)])
+    capture, _ = _planes(width, rows, [(0, 5, 6, 10, 9, 3)])
+    ignore = np.zeros((rows, width), dtype=bool)
+    ignore[4, :] = True
+    prop = _by_name(
+        parity_probe.edge_offsets(bytes(ours), layers, bytes(capture), ignore, width, rows)
+    )["prop"]
+    assert prop.mismatched == 0
+    assert prop.component is None
+    uncovered = _by_name(
+        parity_probe.edge_offsets(bytes(ours), layers, bytes(capture), ignore, width, rows)
+    )["uncovered"]
+    assert uncovered.component is not None
+    assert uncovered.component.border

@@ -1,0 +1,98 @@
+== offset -2
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+1343 prop 4320 1179 186 | x: 15 24 52 55 | y: 1 10 54 51 | shift +2 -2 0.688 +0.021
+1343 prop region 0,0,319,184 3304 centre +1.0,-10.2 border yes | shift +2 -2 0.647 +0.029
+1343 actor 3983 3523 101 | x: 8 3 29 13 | y: 6 0 52 15 | shift +2 -2 0.066 +0.045
+1343 actor region 24,112,264,184 2933 centre -7.2,+62.2 border yes | shift -2 -2 0.032 +0.014
+1508 prop 1780 590 90 | x: 1 15 0 42 | y: 2 19 4 15 | shift -2 -2 0.515 +0.070
+1508 prop region 0,0,319,184 1779 centre +4.9,-5.4 border yes | shift -2 -2 0.519 +0.078
+1508 actor 19759 15842 1810 | x: 323 319 237 229 | y: 232 134 217 285 | shift -2 +1 0.196 +0.008
+1508 actor region 68,8,260,184 19759 centre -6.5,+7.1 border yes | shift -2 +1 0.196 +0.008
+2696 prop 2720 901 207 | x: 23 27 44 28 | y: 1 13 67 55 | shift +0 -2 0.725 +0.026
+2696 prop region 0,0,319,184 1766 centre +9.7,-5.1 border yes | shift -1 -2 0.712 +0.043
+2696 actor 3139 3061 163 | x: 7 5 44 19 | y: 3 3 99 14 | shift -1 -2 0.115 +0.087
+2696 actor region 0,82,205,173 2727 centre -55.0,+30.0 border yes | shift -2 -2 0.064 +0.040
+== offset -1
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+1343 prop 3655 1408 456 | x: 66 24 54 94 | y: 3 21 79 263 | shift +2 +2 0.681 +0.076
+1343 prop region 0,0,319,184 2710 centre +1.7,-10.4 border yes | shift +2 +1 0.629 +0.083
+1343 actor 3933 3468 218 | x: 18 21 36 43 | y: 4 7 132 16 | shift -2 -2 0.195 +0.150
+1343 actor region 21,102,264,184 3191 centre -8.4,+56.8 border yes | shift -2 -2 0.173 +0.135
+1508 prop 1545 530 57 | x: 0 13 0 14 | y: 3 17 6 6 | shift -1 -2 0.550 +0.047
+1508 prop region 0,0,319,184 1545 centre +4.3,-5.6 border yes | shift -1 -2 0.549 +0.049
+1508 actor 20064 16045 1742 | x: 302 311 252 185 | y: 202 169 256 230 | shift -2 +2 0.195 +0.008
+1508 actor region 68,7,262,184 20064 centre -5.6,+7.2 border yes | shift -2 +2 0.195 +0.008
+2696 prop 2364 941 250 | x: 52 40 37 45 | y: 4 12 98 48 | shift -2 +0 0.700 +0.014
+2696 prop region 0,0,319,184 1483 centre +9.8,-4.7 border yes | shift -2 +0 0.696 +0.031
+2696 actor 3061 2933 228 | x: 8 23 33 39 | y: 1 4 153 14 | shift -2 -2 0.193 +0.145
+2696 actor region 0,82,204,171 2576 centre -59.8,+29.6 border yes | shift -2 -2 0.108 +0.082
+== offset 0
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+1343 prop 2341 1958 659 | x: 51 113 109 55 | y: 9 101 345 99 | shift -1 -2 0.833 +0.370
+1343 prop region 0,0,319,184 1750 centre +2.4,-10.5 border yes | shift -1 -2 0.797 +0.370
+1343 actor 3003 2819 787 | x: 39 116 109 53 | y: 0 19 584 56 | shift -1 -2 0.691 +0.453
+1343 actor region 18,101,258,184 2299 centre -13.0,+56.0 border yes | shift -1 -2 0.686 +0.437
+1508 prop 637 630 382 | x: 1 171 4 20 | y: 2 180 24 18 | shift -2 -1 0.740 +0.293
+1508 prop region 0,0,319,184 627 centre +4.8,-7.6 border yes | shift -2 -2 0.749 +0.313
+1508 actor 10027 9794 5750 | x: 124 2191 1672 125 | y: 218 967 829 276 | shift -2 -1 0.807 +0.301
+1508 actor region 60,10,266,184 10027 centre -6.0,+9.4 border yes | shift -2 -1 0.807 +0.301
+2696 prop 2165 1443 611 | x: 67 62 73 69 | y: 38 20 109 318 | shift -2 -2 0.758 +0.248
+2696 prop region 0,0,319,184 1390 centre +9.7,-4.3 border yes | shift -2 -2 0.769 +0.272
+2696 actor 2938 2884 634 | x: 32 94 62 56 | y: 1 10 443 28 | shift -2 -2 0.548 +0.462
+2696 actor region 0,81,203,168 2456 centre -60.8,+26.4 border yes | shift -2 -2 0.524 +0.461
+== offset 1
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+1343 prop 970 849 690 | x: 117 211 128 100 | y: 9 134 260 160 | shift -1 +0 0.786 +0.018
+1343 prop region 0,0,319,184 673 centre +3.3,-10.8 border yes | shift -1 +0 0.771 +0.033
+1343 actor 1686 1625 668 | x: 189 58 119 114 | y: 2 30 281 114 | shift +1 +0 0.604 +0.033
+1343 actor region 15,100,255,184 1191 centre -18.2,+54.9 border yes | shift +1 +0 0.660 +0.046
+1508 prop 224 224 218 | x: 0 113 4 8 | y: 0 104 10 8 | shift -1 -1 0.965 +0.162
+1508 prop region 0,0,319,184 219 centre +5.4,-7.5 border yes | shift -1 -1 0.965 +0.163
+1508 actor 7131 7131 5815 | x: 80 2562 1625 71 | y: 158 861 906 184 | shift -1 -1 0.842 +0.196
+1508 actor region 59,9,266,184 7131 centre -6.6,+8.9 border yes | shift -1 -1 0.842 +0.196
+2696 prop 1920 1334 644 | x: 27 132 45 32 | y: 32 60 156 316 | shift -1 -2 0.732 +0.198
+2696 prop region 0,0,319,184 1185 centre +9.7,-4.4 border yes | shift -2 -2 0.762 +0.255
+2696 actor 3251 3158 594 | x: 28 107 49 21 | y: 3 7 430 27 | shift -1 -2 0.369 +0.291
+2696 actor region 0,83,201,168 2861 centre -48.7,+24.2 border yes | shift -1 -2 0.358 +0.280
+== offset 2
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+1343 prop 2319 1152 430 | x: 76 45 64 53 | y: 97 17 159 113 | shift -2 -2 0.748 +0.057
+1343 prop region 0,0,319,184 1231 centre +4.1,-10.9 border yes | shift -2 -1 0.761 +0.045
+1343 actor 2922 2610 686 | x: 61 59 129 88 | y: 34 13 82 428 | shift +2 +2 0.492 +0.195
+1343 actor region 13,99,252,184 2410 centre -20.5,+53.0 border yes | shift +2 +2 0.569 +0.318
+1508 prop 36 36 36 | x: 0 5 4 2 | y: 0 24 3 4 | shift +0 -1 0.977 +0.009
+1508 prop region 0,0,319,184 33 centre +5.9,-7.3 border yes | shift +0 -1 0.980 +0.010
+1508 actor 5481 5360 4397 | x: 206 1257 1421 47 | y: 503 275 974 183 | shift -1 +0 0.770 +0.036
+1508 actor region 57,8,267,184 5481 centre -7.0,+8.5 border yes | shift -1 +0 0.770 +0.036
+2696 prop 1459 1280 687 | x: 56 145 21 31 | y: 23 112 373 70 | shift -2 -1 0.770 +0.225
+2696 prop region 0,0,319,184 980 centre +9.7,-4.2 border yes | shift -2 -2 0.787 +0.290
+2696 actor 2800 2676 759 | x: 106 74 42 65 | y: 5 31 507 34 | shift +1 -2 0.403 +0.167
+2696 actor region 0,82,200,167 2427 centre -49.9,+23.1 border yes | shift +1 -2 0.412 +0.159
+== offset 3
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+1343 prop 3424 947 321 | x: 32 52 44 24 | y: 17 12 156 106 | shift +2 -2 0.774 +0.025
+1343 prop region 0,0,319,184 2211 centre +3.5,-9.4 border yes | shift -2 +1 0.785 +0.032
+1343 actor 3892 3421 391 | x: 16 29 92 29 | y: 44 6 46 222 | shift +2 +2 0.235 +0.135
+1343 actor region 10,98,250,183 3224 centre -23.5,+50.7 border no | shift +2 +2 0.201 +0.153
+1508 prop 5831 1090 45 | x: 0 41 0 1 | y: 0 0 0 3 | shift -2 +2 0.092 +0.084
+1508 prop region 0,0,319,184 5401 centre +6.6,-6.3 border yes | shift -2 +2 0.086 +0.082
+1508 actor 17289 14571 1098 | x: 158 152 151 135 | y: 106 107 224 194 | shift +0 -2 0.145 +0.002
+1508 actor region 74,20,240,184 17289 centre -11.4,+9.4 border yes | shift +0 -2 0.145 +0.002
+2696 prop 1088 888 617 | x: 25 172 41 49 | y: 9 68 143 299 | shift +0 -2 0.761 +0.068
+2696 prop region 0,0,319,184 615 centre +9.9,-3.9 border yes | shift +0 -2 0.824 +0.117
+2696 actor 2482 2415 599 | x: 127 20 68 58 | y: 7 4 223 192 | shift +2 +0 0.377 +0.073
+2696 actor region 0,82,198,165 2118 centre -51.3,+21.1 border yes | shift +2 +0 0.398 +0.085
+== offset 4
+tick class mismatched edge near | x: lo toward away hi toward away | y: lo toward away hi toward away | shift dx dy agree gain
+1343 prop 4009 919 180 | x: 34 20 30 26 | y: 8 6 69 72 | shift -2 +2 0.776 +0.014
+1343 prop region 0,0,319,184 2749 centre +4.2,-9.2 border yes | shift -2 +2 0.773 +0.017
+1343 actor 4164 3601 211 | x: 4 14 48 17 | y: 35 0 26 111 | shift -2 +2 0.173 +0.105
+1343 actor region 7,96,247,184 3382 centre -27.3,+49.3 border yes | shift -2 +2 0.063 +0.019
+1508 prop 5458 1064 58 | x: 0 50 0 1 | y: 1 0 2 5 | shift -2 -2 0.104 +0.061
+1508 prop region 0,0,319,184 5037 centre +6.8,-6.4 border yes | shift -2 -2 0.110 +0.068
+1508 actor 17553 14790 1114 | x: 191 150 145 130 | y: 120 89 224 185 | shift +0 -1 0.146 +0.002
+1508 actor region 73,20,241,184 17553 centre -11.4,+9.3 border yes | shift +0 -1 0.146 +0.002
+2696 prop 1294 692 369 | x: 100 39 14 13 | y: 61 13 135 108 | shift +2 -2 0.763 +0.037
+2696 prop region 0,0,319,184 967 centre +7.6,-2.9 border yes | shift +2 -2 0.787 +0.044
+2696 actor 2944 2842 403 | x: 53 16 32 29 | y: 13 3 200 135 | shift +2 +0 0.220 +0.025
+2696 actor region 0,83,199,164 2575 centre -44.8,+20.5 border yes | shift +2 +0 0.233 +0.031
