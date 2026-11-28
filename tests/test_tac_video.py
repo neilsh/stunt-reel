@@ -398,7 +398,7 @@ def test_the_stream_finder_picks_the_log_that_carries_its_token(logs_dir: Path) 
     assert video._find_stream_log("BBB", logs_dir) == logs_dir / "lua-debug-2-b.log"
 
 
-def test_the_emulator_log_dir_follows_the_platform(
+def test_the_emulator_log_dir_follows_localappdata(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
