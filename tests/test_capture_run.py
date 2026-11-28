@@ -913,3 +913,36 @@ def test_stream_needs_out(
         module.parse_args()
     assert stopped.value.code == 2
     assert "--stream needs --out" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("flags", "message"),
+    [
+        (["--stream-segment", "700"], "--stream-segment needs --stream"),
+        (["--stream", "--stream-segment", "99"], "at least 100"),
+    ],
+)
+def test_stream_segment_is_validated(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    flags: list[str],
+    message: str,
+) -> None:
+    module = load_script(VIDEO)
+    out = ["--out", str(tmp_path / "out")] if "--stream" in flags else []
+    monkeypatch.setattr(sys, "argv", [f"{VIDEO}.py", *out, *flags])
+    with pytest.raises(SystemExit) as stopped:
+        module.parse_args()
+    assert stopped.value.code == 2
+    assert message in capsys.readouterr().err
+
+
+def test_stream_segment_is_read_with_stream_and_out(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    module = load_script(VIDEO)
+    argv = [f"{VIDEO}.py", "--stream", "--out", str(tmp_path / "out"), "--stream-segment", "700"]
+    monkeypatch.setattr(sys, "argv", argv)
+
+    assert module.parse_args().stream_segment == 700

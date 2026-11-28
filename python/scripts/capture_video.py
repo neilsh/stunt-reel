@@ -85,12 +85,27 @@ def parse_args() -> argparse.Namespace:
             "capture.avi, about 235 MB per 1,900 frames (needs --out)"
         ),
     )
+    parser.add_argument(
+        "--stream-segment",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "with --stream, replay the film in segments of N frames (at least 100), each a fresh "
+            "emulator run, for films that do not fit one script, such as LOCATION; each segment "
+            "costs one more emulator run up to the segment's end"
+        ),
+    )
     capture_run.add_sound_samples_option(parser)
     args = parser.parse_args()
     if args.max_frames < 1:
         parser.error("--max-frames must be at least 1")
     if args.stream and args.out is None:
         parser.error("--stream needs --out: the stream log is written beside the capture")
+    if args.stream_segment is not None and not args.stream:
+        parser.error("--stream-segment needs --stream")
+    if args.stream_segment is not None and args.stream_segment < 100:
+        parser.error("--stream-segment must be at least 100 frames")
     if args.out is None and args.max_frames != video.VIDEO_MAX_FRAMES:
         parser.error(
             "a non-default --max-frames needs --out: only default parameters fill the store (ADR 0028)"
@@ -120,6 +135,13 @@ def plan_video(args: argparse.Namespace) -> capture_run.Plan:
             cap=args.max_frames,
             emulator=video.emulator_info(),
             stream_to=attempt.out / STREAM_FILE if args.stream else None,
+            stream_segment=args.stream_segment,
+            open_segment=(
+                (lambda capture_dir: attempt.runner(capture_dir=capture_dir))
+                if args.stream_segment is not None
+                else None
+            ),
+            progress=attempt.report,
         )
         return (
             f"recorded {len(recorded.log.frame)} frames ({recorded.end}), film starts at frame "
