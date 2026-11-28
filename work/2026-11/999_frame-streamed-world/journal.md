@@ -42,3 +42,30 @@
   Nothing here times a frame's copy or its `write_buffer`; on `LOCATION` it would move about `0.26` MB a frame, about `2.0` GiB over the film.
   `[Bounded Observation]`: one CPU run per film, one machine, the counts only.
 - **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 3.
+
+## 2026-11-28: stage B, the world drawn from the stream, stores and memory on cloud lavapipe
+
+- **Question**: with `STUNT_WORLD_STREAM=1` (`RenderOptions::world_stream`), does the scene renderer draw stores byte-identical to the baked world on the seven reference films, and what does it do to peak memory (#1092's two acceptance items)?
+- **Built**: layer 1 (#1214) carries each streamed vertex's shape word in the apex section, restages the renderer's slice lists in place, plans the world without device buffers (`GpuModel::plan_outlined`) and adds `StreamBuffers`; layer 2 draws from them.
+  With the switch on the world has no device buffer and the renderer keeps an owned copy of the mesh (`StreamSource`, `ir.vertices`, `ir.indices`, the outline list and the prop runs; no apex copy, since the world's apex is each vertex's own position); the CLI frees the scene's copy as before.
+- **How**:
+  - Stores: [`stream_store_check.py`](stream_store_check.py) renders each film twice with one release binary, `STUNT_WORLD_STREAM` unset then `=1`, through `parity_pipeline.render_film`, and hashes `frames`, `layers`, `palettes` and `shapes`; it fails when a render with the switch on lacks the `[stuntreel] world stream: on` line or one with it unset has it.
+    Cloud lavapipe (Mesa 25.2.8 from `mesa-vulkan-drivers`), `--software-only`, data from `mise run cloud-assets -- fetch --replace-unmarked`, `game-builds` and `superset-all`, one process a film.
+  - Memory: [`stream_memory_check.py`](stream_memory_check.py), `LOCATION` ticks `12..=120` with `--report-memory`, three runs each, off and on, interleaved.
+- **Result**:
+  - Stores, [`stream-stores.csv`](stream-stores.csv): all four planes' hashes are identical between off and on on `CTRY`, `INTRO`, `LAND`, `BALLOON`, `TRAINTNL`, `BOMB` and `LOCATION`, on cloud lavapipe.
+    The Windows lavapipe and RTX 4070 runs are not done (they need the owner's machine); the PR says so.
+  - Peak memory, [`stream-memory.csv`](stream-memory.csv), MiB of resident memory on cloud lavapipe:
+
+    | Variant | Scene built | Renderer opened | Mesh released | Frames rendered | Peak |
+    |---|---|---|---|---|---|
+    | off | 321.0 to 325.0 | 839.9 to 842.8 | 579.2 to 582.1 | 680.7 to 683.7 | 966.0 to 968.9 |
+    | on | 321.0 to 321.1 | 736.9 to 737.5 | 476.1 to 476.8 | 499.9 to 500.2 | 736.6 to 737.2 |
+
+    The peak is about `229` MiB lower on in all three pairs.
+    On lavapipe a "device" buffer is host memory, which is why dropping the world's device buffers shows in resident memory; an RTX 4070's device memory is not in the process's resident set, so its figure is for the Legion run.
+- **Verdict**: stores identical on cloud lavapipe for the seven films, one render each per variant; peak memory lower on cloud lavapipe in three of three pairs; `[Bounded Observation]`, one machine, one day.
+  Both adapters on Windows remain.
+  Not timed: stage C owns the loop gate.
+- **Lives in**: this entry; `lavapipe-render-time.md` § 6 is written by stage C.
+

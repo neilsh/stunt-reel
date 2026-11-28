@@ -1,0 +1,7 @@
+adapter,run,variant,scene_built_mib,renderer_opened_mib,mesh_released_mib,frames_rendered_mib,peak_mib
+lavapipe,0,off,321.1,839.9,579.2,680.8,966.1
+lavapipe,0,stream,321.1,737.5,476.8,500.2,737.2
+lavapipe,1,off,320.9,839.9,579.2,680.7,966.0
+lavapipe,1,stream,321.0,736.9,476.1,499.9,736.6
+lavapipe,2,off,325.0,842.8,582.1,683.7,968.9
+lavapipe,2,stream,321.0,737.3,476.6,500.2,737.2
