@@ -172,6 +172,9 @@ pub(crate) fn run_headless(
     scene_times: SceneTimes,
 ) -> Result<(), String> {
     println!("[stuntreel] Starting headless offscreen presentation...");
+    if config.world_stream {
+        println!("[stuntreel] world stream: on");
+    }
     let memory = MemoryReport::new(config.report_memory);
     memory.stage("scene built");
     let mut timing = TimingReport::new(config.report_timing, scene_times);

@@ -61,6 +61,34 @@ pub(crate) fn own_apexes(ir: &SodModelIr) -> Vec<Apex> {
     apex
 }
 
+/// [`own_apexes`] of the source vertices `range` of a model whose vertices are `vertices`,
+/// without the other vertices' entries; `spheres` must be ascending and disjoint, as a world
+/// builds them, so that each vertex finds its sphere in one pass.
+pub(crate) fn own_apexes_of<'a>(
+    vertices: &'a [SodVertex],
+    range: std::ops::Range<usize>,
+    spheres: &'a [stunt_core::contracts::RankSphere],
+) -> impl Iterator<Item = Apex> + 'a {
+    let mut next = spheres.partition_point(|s| s.vertices.end as usize <= range.start);
+    let window = vertices.get(range.clone()).unwrap_or_default();
+    window.iter().zip(range).map(move |(v, at)| {
+        while spheres
+            .get(next)
+            .is_some_and(|s| s.vertices.end as usize <= at)
+        {
+            next += 1;
+        }
+        let sphere = spheres
+            .get(next)
+            .filter(|s| s.vertices.start as usize <= at)
+            .filter(|_| v.list_rank != 0 && v.flags & VERTEX_FLAG_LINE == 0);
+        match sphere {
+            Some(s) => [s.centre[0], s.centre[1], s.centre[2], s.radius],
+            None => [v.position[0], v.position[1], v.position[2], 0.0],
+        }
+    })
+}
+
 /// A shape with its outlines, and each vertex's apex.
 pub(crate) struct Outlined {
     /// The shape with each mesh node's outline drawn after its triangles ([`outlined`]).

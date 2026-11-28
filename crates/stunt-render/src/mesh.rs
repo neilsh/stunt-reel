@@ -18,9 +18,19 @@ use stunt_core::contracts::{
     arena_index,
 };
 use stunt_core::world::{GROUND_NODE, PropRun};
-use wgpu::util::DeviceExt as _;
 
-use crate::pipeline::PROP_RUNS_GROUP;
+/// One vertex of the second vertex stream, which follows the first vertex for vertex.
+///
+/// `apex` is the vertex's apex ([`Outlined`], [`Apex`]): a point and a radius. `prop_shape` is the shape
+/// word of a world prop vertex, `shape id + 1` of the prop that placed it ([`PropRun`]), and 0
+/// for every other vertex; the plane's shape word reads it, so the fragment stage searches
+/// nothing.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct ApexVertex {
+    pub apex: Apex,
+    pub prop_shape: u32,
+}
 
 /// Cached node data inside GPU model representation.
 #[derive(Debug, Clone)]
@@ -273,7 +283,7 @@ impl GpuModel {
     ///
     /// Each vertex's apex ([`Outlined`]) is its own position, so no line corner is culled.
     pub fn from_ir(device: &wgpu::Device, queue: &wgpu::Queue, ir: &SodModelIr) -> Self {
-        Self::upload(device, queue, ir, &own_apexes(ir), None)
+        Self::upload(device, queue, ir, &own_apexes(ir), &[], None)
     }
 
     /// Uploads an outlined shape with its apexes, so its outline corners cull with the
@@ -283,7 +293,7 @@ impl GpuModel {
         queue: &wgpu::Queue,
         shape: &Outlined,
     ) -> Self {
-        Self::upload(device, queue, &shape.ir, &shape.apex, None)
+        Self::upload(device, queue, &shape.ir, &shape.apex, &[], None)
     }
 
     /// Like [`Self::from_ir`], and gives each mesh slice its outline for [`Self::draw_edges`]:
@@ -294,25 +304,58 @@ impl GpuModel {
     ///
     /// `marks` are offsets in `ir.indices`, ascending, where [`Self::cut`] may cut a slice; a
     /// cut keeps the outline whole only where no edge is shared across it.
+    ///
+    /// `prop_runs` are `ir`'s prop runs in vertex order: each vertex in one carries its shape
+    /// word in the second vertex stream ([`ApexVertex::prop_shape`]).
     pub fn from_ir_outlined(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         ir: &SodModelIr,
         outlined: fn(&SodVertex) -> bool,
         marks: &[u32],
+        prop_runs: &[PropRun],
     ) -> Self {
-        Self::upload(device, queue, ir, &own_apexes(ir), Some((outlined, marks)))
+        Self::upload(
+            device,
+            queue,
+            ir,
+            &own_apexes(ir),
+            prop_runs,
+            Some((outlined, marks)),
+        )
     }
 
-    /// Uploads `ir`; `outlined` is [`Self::from_ir_outlined`]'s filter and marks.
+    /// Uploads `ir`; `outlined` is [`Self::from_ir_outlined`]'s filter and marks, and
+    /// `prop_runs` its runs.
     fn upload(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         ir: &SodModelIr,
         apex: &[Apex],
+        prop_runs: &[PropRun],
         outlined: Option<Outlines<'_>>,
     ) -> Self {
-        let limit = device.limits().max_buffer_size;
+        let (mut model, chunk_plans, edges) =
+            Self::plan(device.limits().max_buffer_size, ir, outlined);
+        model.chunks = chunk_plans
+            .iter()
+            .zip(&edges)
+            .enumerate()
+            .map(|(n, (chunk, edges))| {
+                GpuChunk::upload(device, queue, ir, (apex, prop_runs), n, chunk, edges)
+            })
+            .collect();
+        model
+    }
+
+    /// Plans the model for a device whose largest buffer is `limit` bytes, without creating
+    /// any buffer: the model has no [`Self::chunks`], and the chunks' plans and outline lists
+    /// are returned for [`GpuChunk::upload`].
+    fn plan(
+        limit: u64,
+        ir: &SodModelIr,
+        outlined: Option<Outlines<'_>>,
+    ) -> (Self, Vec<ChunkPlan>, Vec<Vec<u32>>) {
         // A buffer larger than the address space is capped at what it can address.
         let max_vertices =
             usize::try_from(limit / size_of::<SodVertex>() as u64).unwrap_or(usize::MAX);
@@ -346,17 +389,13 @@ impl GpuModel {
             Some((keep, marks)) => plan_edges(&mut plan, ir, keep, marks),
             None => (vec![Vec::new(); plan.chunks.len()], Vec::new()),
         };
-        let chunks = plan
-            .chunks
-            .iter()
-            .zip(&edges)
-            .enumerate()
-            .map(|(n, (chunk, edges))| GpuChunk::upload(device, queue, ir, apex, n, chunk, edges))
-            .collect();
-
         // Translate nodes into GpuNode flat arena
         marks.resize_with(plan.slices.len(), Vec::new);
-        let mut planned = plan.slices.into_iter().zip(marks);
+        let UploadPlan {
+            chunks: chunk_plans,
+            slices,
+        } = plan;
+        let mut planned = slices.into_iter().zip(marks);
         let bounds = node_bounds(ir);
         let discs = node_discs(ir);
         let nodes = ir
@@ -382,9 +421,9 @@ impl GpuModel {
             .collect();
 
         let bounds = model_bounds(&ir.root_nodes, &bounds);
-        Self {
+        let model = Self {
             name: ir.name.clone(),
-            chunks,
+            chunks: Vec::new(),
             vertex_count: arena_index(ir.vertices.len()),
             index_count: arena_index(ir.indices.len()),
             nodes,
@@ -394,7 +433,24 @@ impl GpuModel {
                 .vertices
                 .iter()
                 .any(|vertex| vertex.flags & VERTEX_FLAG_DISC != 0),
-        }
+        };
+        (model, chunk_plans, edges)
+    }
+
+    /// The planning of [`Self::from_ir_outlined`] alone, for a device whose largest buffer is
+    /// `max_buffer_size` bytes: the model, with no [`Self::chunks`] and so no device buffer, and
+    /// the outline list the one chunk's edge buffer would hold. `None` when the plan splits
+    /// the model, which the world stream does not follow.
+    pub(crate) fn plan_outlined(
+        max_buffer_size: u64,
+        ir: &SodModelIr,
+        outlined: fn(&SodVertex) -> bool,
+        marks: &[u32],
+    ) -> Option<(Self, Vec<u32>)> {
+        let (model, chunk_plans, mut edges) =
+            Self::plan(max_buffer_size, ir, Some((outlined, marks)));
+        let unsplit = matches!(chunk_plans.as_slice(), [only] if only.indices.is_none());
+        unsplit.then(|| (model, edges.remove(0)))
     }
 
     /// Whether any vertex the model can draw may land inside `view_proj`'s view frustum, by
@@ -532,21 +588,6 @@ impl GpuModel {
         .collect_world()
     }
 
-    /// Gives each chunk `runs`, the source model's prop runs in its vertex order, in the
-    /// chunk's own vertex numbering ([`chunk_prop_runs`]), as a bind group of `layout` that
-    /// [`Self::draw_slices`] and [`Self::draw_edges`] bind with the chunk.
-    pub fn attach_prop_runs(
-        &mut self,
-        device: &wgpu::Device,
-        layout: &wgpu::BindGroupLayout,
-        runs: &[PropRun],
-    ) {
-        for chunk in &mut self.chunks {
-            let table = chunk_prop_runs(runs, &chunk.vertex_ranges);
-            chunk.prop_runs = Some(prop_runs_group(device, layout, &table));
-        }
-    }
-
     /// The part `start..end` of the index arena of node `node`'s one slice, with its share
     /// of the slice's outline; `None` unless both ends are among the node's marks
     /// ([`Self::from_ir_outlined`]) and `start <= end`.
@@ -588,9 +629,6 @@ impl GpuModel {
                 rpass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
                 rpass.set_vertex_buffer(1, chunk.apex_buffer.slice(..));
                 rpass.set_index_buffer(chunk.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                if let Some(runs) = &chunk.prop_runs {
-                    rpass.set_bind_group(PROP_RUNS_GROUP, runs, &[]);
-                }
                 bound = Some(mesh.chunk);
             }
             rpass.draw_indexed(
@@ -617,9 +655,6 @@ impl GpuModel {
                 rpass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
                 rpass.set_vertex_buffer(1, chunk.apex_buffer.slice(..));
                 rpass.set_index_buffer(chunk.edges.slice(..), wgpu::IndexFormat::Uint32);
-                if let Some(runs) = &chunk.prop_runs {
-                    rpass.set_bind_group(PROP_RUNS_GROUP, runs, &[]);
-                }
                 bound = Some(mesh.chunk);
             }
             rpass.draw_indexed(
@@ -736,7 +771,8 @@ pub(crate) fn plan_edges(
 pub struct GpuChunk {
     /// Vertex buffer of the chunk.
     pub vertex_buffer: wgpu::Buffer,
-    /// Each vertex's apex ([`Outlined`]), the second vertex stream, in `vertex_buffer`'s order.
+    /// The second vertex stream ([`ApexVertex`]: each vertex's apex and prop shape word), in
+    /// `vertex_buffer`'s order.
     pub apex_buffer: wgpu::Buffer,
     /// 32-bit index buffer of the chunk.
     pub index_buffer: wgpu::Buffer,
@@ -744,9 +780,6 @@ pub struct GpuChunk {
     pub edges: wgpu::Buffer,
     /// The source vertex ranges copied back to back into `vertex_buffer`.
     pub vertex_ranges: Vec<Range<usize>>,
-    /// The model's prop runs in this chunk's vertex numbering, bound at [`PROP_RUNS_GROUP`]
-    /// with the chunk's buffers; `None` unless [`GpuModel::attach_prop_runs`] gave them.
-    pub prop_runs: Option<wgpu::BindGroup>,
 }
 
 impl GpuChunk {
@@ -754,7 +787,7 @@ impl GpuChunk {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         ir: &SodModelIr,
-        apex: &[Apex],
+        (apex, prop_runs): (&[Apex], &[PropRun]),
         n: usize,
         plan: &ChunkPlan,
         edges: &[u32],
@@ -784,13 +817,37 @@ impl GpuChunk {
             }
             offset += bytes.len() as u64;
         }
+        // Filled where it is mapped, so the stream is built once, in place.
         let apex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&format!("{}_apex_buffer{suffix}", ir.name)),
-            size: (plan.vertex_count.max(1) * size_of::<Apex>()) as u64,
+            size: (plan.vertex_count.max(1) * size_of::<ApexVertex>()) as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
+            mapped_at_creation: true,
         });
-        write_windows(queue, &apex_buffer, apex, &plan.vertex_ranges);
+        {
+            #[expect(
+                clippy::expect_used,
+                reason = "a buffer created mapped maps its whole range"
+            )]
+            let mut mapped = apex_buffer
+                .slice(..)
+                .get_mapped_range_mut()
+                .expect("a buffer created mapped maps its whole range");
+            let mut stream = apex_vertices(apex, &plan.vertex_ranges, prop_runs);
+            let mut block = Vec::with_capacity(APEX_BLOCK);
+            let mut at = 0;
+            loop {
+                block.clear();
+                block.extend(stream.by_ref().take(APEX_BLOCK));
+                let bytes: &[u8] = bytemuck::cast_slice(&block);
+                if bytes.is_empty() {
+                    break;
+                }
+                mapped.slice(at..at + bytes.len()).copy_from_slice(bytes);
+                at += bytes.len();
+            }
+        }
+        apex_buffer.unmap();
 
         let indices = plan.indices.as_deref().unwrap_or(&ir.indices);
         let index_bytes: &[u8] = bytemuck::cast_slice(indices);
@@ -819,14 +876,17 @@ impl GpuChunk {
             index_buffer,
             edges: edge_buffer,
             vertex_ranges: plan.vertex_ranges.clone(),
-            prop_runs: None,
         }
     }
 
     /// Writes `vertices`' windows of this chunk into its vertex buffer with one write, since
     /// each write allocates a staging buffer (`research/parity/lavapipe-render-time.md`).
     fn rewrite_vertices(&self, queue: &wgpu::Queue, vertices: &[SodVertex], apex: &[Apex]) {
-        write_windows(queue, &self.apex_buffer, apex, &self.vertex_ranges);
+        // A rewritten model has no prop runs: its vertices carry no shape word.
+        let stream: Vec<ApexVertex> = apex_vertices(apex, &self.vertex_ranges, &[]).collect();
+        if !stream.is_empty() {
+            queue.write_buffer(&self.apex_buffer, 0, bytemuck::cast_slice(&stream));
+        }
         // An unsplit chunk is one window: write it straight from the source.
         if let [range] = self.vertex_ranges.as_slice() {
             if let Some(window) = vertices.get(range.clone()).filter(|w| !w.is_empty()) {
@@ -847,27 +907,41 @@ impl GpuChunk {
     }
 }
 
-/// Writes `source`'s `ranges` back to back into `buffer` with one write; writes nothing when
-/// a range leaves `source`.
-fn write_windows<T: bytemuck::Pod>(
-    queue: &wgpu::Queue,
-    buffer: &wgpu::Buffer,
-    source: &[T],
-    ranges: &[Range<usize>],
-) {
-    let packed = packed_windows(source, ranges);
-    if let Some(packed) = packed.filter(|p| !p.is_empty()) {
-        queue.write_buffer(buffer, 0, bytemuck::cast_slice(&packed));
-    }
+/// Vertices of [`apex_vertices`] written to a mapped buffer at a time.
+const APEX_BLOCK: usize = 1 << 16;
+
+/// `apex`'s `ranges` back to back as [`ApexVertex`]es, each with the shape word of the run in
+/// `runs` (in vertex order) that holds its source vertex, 0 when none does. A range that leaves
+/// `apex` contributes nothing.
+pub(crate) fn apex_vertices<'a>(
+    apex: &'a [Apex],
+    ranges: &'a [Range<usize>],
+    runs: &'a [PropRun],
+) -> impl Iterator<Item = ApexVertex> + 'a {
+    ranges.iter().flat_map(move |range| {
+        let window = apex.get(range.clone()).unwrap_or_default();
+        shaped(window.iter().copied(), range.clone(), runs)
+    })
 }
 
-/// `source`'s `ranges` back to back, or `None` when a range leaves `source`.
-fn packed_windows<T: Copy>(source: &[T], ranges: &[Range<usize>]) -> Option<Vec<T>> {
-    let mut packed = Vec::new();
-    for range in ranges {
-        packed.extend_from_slice(source.get(range.clone())?);
-    }
-    Some(packed)
+/// `apexes`, one per source vertex of `range`, as [`ApexVertex`]es with their runs' shape
+/// words, as [`apex_vertices`] gives them.
+pub(crate) fn shaped<'a>(
+    apexes: impl Iterator<Item = Apex> + 'a,
+    range: Range<usize>,
+    runs: &'a [PropRun],
+) -> impl Iterator<Item = ApexVertex> + 'a {
+    let mut run = runs.partition_point(|run| run.end as usize <= range.start);
+    apexes.zip(range).map(move |(apex, source)| {
+        while runs.get(run).is_some_and(|r| r.end as usize <= source) {
+            run += 1;
+        }
+        let prop_shape = runs
+            .get(run)
+            .filter(|r| r.first as usize <= source)
+            .map_or(0, |r| u32::from(r.shape).saturating_add(1));
+        ApexVertex { apex, prop_shape }
+    })
 }
 
 /// A mesh node's slice as the IR stores it: its indices address the whole vertex buffer.
@@ -1002,57 +1076,6 @@ pub(crate) fn plan_upload(
         slices.push(out);
     }
     UploadPlan { chunks, slices }
-}
-
-/// `runs`, in source vertex order, as `[first, end, shape id + 1]` in the vertex numbering of
-/// a chunk that holds the source vertices `ranges` back to back: each run is cut to every
-/// range it meets and moved to where that range lies in the chunk. A run that meets no range
-/// is left out.
-pub(crate) fn chunk_prop_runs(runs: &[PropRun], ranges: &[Range<usize>]) -> Vec<[u32; 3]> {
-    let mut table = Vec::new();
-    let mut at = 0usize;
-    for range in ranges {
-        let from = runs.partition_point(|run| run.end as usize <= range.start);
-        for run in runs
-            .iter()
-            .skip(from)
-            .take_while(|run| (run.first as usize) < range.end)
-        {
-            // Both ends lie in `range`, so neither subtraction can wrap.
-            let first = (run.first as usize).max(range.start) - range.start;
-            let end = (run.end as usize).min(range.end) - range.start;
-            table.push([
-                arena_index(at.saturating_add(first)),
-                arena_index(at.saturating_add(end)),
-                u32::from(run.shape).saturating_add(1),
-            ]);
-        }
-        at = at.saturating_add(range.len());
-    }
-    table
-}
-
-/// A bind group of `layout` holding `table` ([`chunk_prop_runs`]) as its storage buffer; an
-/// empty table holds one run that covers no vertex, as a binding cannot be empty.
-pub(crate) fn prop_runs_group(
-    device: &wgpu::Device,
-    layout: &wgpu::BindGroupLayout,
-    table: &[[u32; 3]],
-) -> wgpu::BindGroup {
-    let contents: &[[u32; 3]] = if table.is_empty() { &[[0; 3]] } else { table };
-    let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("stunt_prop_runs"),
-        contents: bytemuck::cast_slice(contents),
-        usage: wgpu::BufferUsages::STORAGE,
-    });
-    device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("stunt_prop_runs"),
-        layout,
-        entries: &[wgpu::BindGroupEntry {
-            binding: 0,
-            resource: buffer.as_entire_binding(),
-        }],
-    })
 }
 
 /// A chunk's vertex count as the `i32` base vertex `draw_indexed` takes.
@@ -1284,36 +1307,6 @@ mod tests {
         assert!(!faces_flattened(&shadow, point, Vec3::X));
     }
 
-    /// An unsplit chunk keeps the runs' vertex numbers; a split one cuts each run to the
-    /// windows it copied and renumbers it from where its window lies in the chunk.
-    #[test]
-    fn chunk_prop_runs_follow_the_chunks_vertex_windows() {
-        let runs = [
-            PropRun {
-                first: 2,
-                end: 5,
-                shape: 7,
-            },
-            PropRun {
-                first: 5,
-                end: 8,
-                shape: 9,
-            },
-            PropRun {
-                first: 12,
-                end: 14,
-                shape: 3,
-            },
-        ];
-        let whole = chunk_prop_runs(&runs, std::slice::from_ref(&(0..14)));
-        assert_eq!(whole, [[2, 5, 8], [5, 8, 10], [12, 14, 4]]);
-        // Source vertices 6..10 then 0..4: chunk vertices 0..4 then 4..8; run 12..14 lies
-        // in neither.
-        let split = chunk_prop_runs(&runs, &[6..10, 0..4]);
-        assert_eq!(split, [[0, 2, 10], [6, 8, 8]]);
-        assert!(chunk_prop_runs(&[], std::slice::from_ref(&(0..14))).is_empty());
-    }
-
     fn source(index_offset: u32, index_count: u32) -> SourceSlice {
         SourceSlice {
             index_offset,
@@ -1531,15 +1524,40 @@ mod tests {
         );
         let shape = crate::outline::outlined(&ir);
         let ranges = [4..8, 0..2];
-        let packed = packed_windows(&shape.apex, &ranges).expect("windows inside the shape");
+        let packed: Vec<ApexVertex> = apex_vertices(&shape.apex, &ranges, &[]).collect();
         assert_eq!(packed.len(), 6);
-        let bits = |p: &[f32]| p.iter().map(|c| c.to_bits()).collect::<Vec<_>>();
+        let bits = |p: [f32; 4]| p.map(f32::to_bits);
+        let point = |p: [f32; 4]| [p[0], p[1], p[2]].map(f32::to_bits);
         let expected = shape.apex[4..8].iter().chain(&shape.apex[..2]);
-        assert!(packed.iter().zip(expected).all(|(a, b)| bits(a) == bits(b)));
+        assert!(
+            packed
+                .iter()
+                .zip(expected)
+                .all(|(a, b)| bits(a.apex) == bits(*b) && a.prop_shape == 0)
+        );
         // An outline corner's apex is not its own position; a filled vertex's is.
-        assert_ne!(bits(&packed[0][..3]), bits(&shape.ir.vertices[4].position));
-        assert_eq!(bits(&packed[4][..3]), bits(&shape.ir.vertices[0].position));
-        assert!(packed_windows(&shape.apex, &[0..1000, 0..1]).is_none());
+        let own = |v: &SodVertex| v.position.map(f32::to_bits);
+        assert_ne!(point(packed[0].apex), own(&shape.ir.vertices[4]));
+        assert_eq!(point(packed[4].apex), own(&shape.ir.vertices[0]));
+        assert_eq!(apex_vertices(&shape.apex, &[0..1000, 0..1], &[]).count(), 1);
+    }
+
+    /// Each vertex takes the shape word of the run it lies in, in a chunk of windows too.
+    #[test]
+    fn apex_vertices_carry_their_runs_shape_words() {
+        let run = |first, end, shape| PropRun { first, end, shape };
+        let runs = [run(2, 4, 7), run(4, 6, 9), run(10, 12, 0)];
+        let apex = vec![[1.0, 2.0, 3.0, 0.0]; 14];
+        let words = |ranges: &[Range<usize>]| {
+            apex_vertices(&apex, ranges, &runs)
+                .map(|v| v.prop_shape)
+                .collect::<Vec<_>>()
+        };
+        let whole = words(std::slice::from_ref(&(0..14)));
+        assert_eq!(whole, [0, 0, 8, 8, 10, 10, 0, 0, 0, 0, 1, 1, 0, 0]);
+        // Windows back to back, out of source order, take the same words per source vertex.
+        assert_eq!(words(&[10..14, 3..6, 0..2]), [1, 1, 0, 0, 8, 10, 10, 0, 0]);
+        assert_eq!(words(std::slice::from_ref(&(3..5))), whole[3..5]);
     }
 
     #[test]
@@ -1887,6 +1905,33 @@ mod tests {
         );
         ir.root_nodes = vec![parent];
         ir
+    }
+
+    /// Planning the world without a device gives the nodes' slices and the one chunk's outline
+    /// list `plan_edges` gives for the same plan, and no buffer; a model the limit splits
+    /// is not planned.
+    #[test]
+    fn plan_outlined_gives_the_slices_and_outline_without_buffers() {
+        let ir = two_node_ir(0.0);
+        let sources = [source(0, 3), source(3, 3)];
+        let mut plan = plan_upload(6, &ir.indices, &sources, usize::MAX, usize::MAX);
+        let (edges, marks) = plan_edges(&mut plan, &ir, |_| true, &[0, 3, 6]);
+
+        let (model, outline) =
+            GpuModel::plan_outlined(u64::MAX, &ir, |_| true, &[0, 3, 6]).expect("one chunk");
+        assert!(model.chunks.is_empty());
+        assert_eq!(outline, edges[0]);
+        assert_eq!(model.nodes.len(), 2);
+        for (node, (slices, marks)) in model.nodes.iter().zip(plan.slices.iter().zip(&marks)) {
+            assert_eq!(&node.meshes, slices);
+            assert_eq!(&node.marks, marks);
+        }
+        assert_eq!(model.vertex_count, 6);
+        assert_eq!(model.root_nodes, ir.root_nodes);
+
+        // Room for three vertices a buffer splits the six into two chunks.
+        let limit = 3 * size_of::<SodVertex>() as u64;
+        assert!(GpuModel::plan_outlined(limit, &ir, |_| true, &[]).is_none());
     }
 
     /// A meshless model holding only its box and whether it has discs.
