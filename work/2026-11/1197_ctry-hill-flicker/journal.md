@@ -230,3 +230,49 @@
   At 20% the mixed form removes the strip on `balloon` 1156 and the film means lose at most 0.0009 (`land`; 5%: 0.0012), with 46 frames down more than 0.005 (`location` 2520's, −0.0130, not examined); where the horizontal slide changes a far foot's distance by more than the bound, the foot appears to need its own plane on `ctry` (the hill) and the ground's on `land` 199 (the ocean), which a distance bound cannot tell apart; a larger bound is what [the earlier bound sweeps](#2026-11-27-the-hills-foot-slides-kilometres-along-a-grazing-ray) tried, where 30% did not hold the hill on every tick.
 - **Next**: per-fragment depth (a design call, step 3 of the plan, needs an ADR) is the form left; nothing cheaper is queued.
 
+
+## 2026-11-28: per-fragment depth from the polygon's own plane
+
+`[Bounded Observation]`, lavapipe (4 vCPU cloud container; no GPU here), the prototype of [ADR 0059](../../../docs/adr/0059-sloped-terrain-takes-its-depth-per-fragment-from-its-own-plane.md).
+
+- **Question**: if a terrain vertex keeps main's snapped pixel but each fragment takes its depth from the plane of its own polygon, does the hill stay on every tick of `ctry:286-366` without the ocean strip or a film regression?
+- **Form** (`DBG_FRAG_DEPTH`, not committed; [`switches/DBG_FRAG_DEPTH.diff`](switches/DBG_FRAG_DEPTH.diff), against `main`): `vertex_output` passes a terrain polygon's eye-relative plane (unit normal, offset from the provoking vertex) as a flat varying and moves the vertex only in x and y, to the pixel `playone_vertex` picks, keeping its own `z` and `w` (a vertex whose ray misses the horizontal plane keeps its own projection, as on `main`); `fs_main` and `fs_main_plane` write `frag_depth` as the depth of the ray through the fragment's pixel centre meeting that plane.
+  Modes: `0` is `main`'s scene (every fragment writes its own depth), `1` terrain, `2` terrain and ocean, `3` terrain with the depth no farther than the ground plane's along the same ray (`max` in reversed depth; the plane's eye-relative height is the model matrix's translation `y`), `4` mode 3 with the ocean per fragment, `5` mode 3 for sloped patches only (`|n.y| < 0.9999`); flat patches and the ocean keep `main`'s slide in mode 5, the ocean in modes 1 and 3.
+  The committed diff is the final code, with the snapping rule below; modes 1 and 3 as first run (before that rule) cannot be reproduced from it.
+  The prototype writes `frag_depth` for every fragment of `fs_main` and `fs_main_plane`, decals included (`true_depth` returns the rasteriser's `clip_position.z`, without the decal pipelines' depth bias, where a fragment has no plane), in mode 0 too.
+- **Track**: heuristic.
+- **Target frames**: `--target ctry:286-366`.
+- **Command** (lavapipe, `VK_DRIVER_FILES` the lavapipe ICD alone): `mise run sweep -- --var DBG_FRAG_DEPTH=<modes> --track heuristic --record work/2026-11/1197_ctry-hill-flicker --topic "<topic>" --images work/2026-11/1197_ctry-hill-flicker/images --crop 140,0,320,100 --target ctry:286-366 --jobs 4`, five sweeps (modes 1 and 2, then 3, then 2 and 4, then 5, then 3 again); each sweep's `0` is its own baseline and scored as `main` every time.
+- **Result**: five sweeps, each with its own `0` (`main`, scored the same every time); scores, unrounded deltas in the figures files ([`…-terrain-depth`](sweeps/per-fragment-terrain-depth.toml), [`…-terrain-depth-clamped`](sweeps/per-fragment-terrain-depth-clamped.toml), [`…-sloped-terrain-clamped`](sweeps/per-fragment-depth-sloped-terrain-clamped.toml)) [`…-clamped-fixed-snap`](sweeps/per-fragment-depth-clamped-fixed-snap.toml) and, for the sweep of modes 2 and 4, whose figures file was not kept, in the console output ([`per-fragment-depth-console.txt`](sweeps/per-fragment-depth-console.txt)):
+
+  | Mode | ctry | intro | land | balloon | traintnl | bomb | location | frames down > 0.005 |
+  |---|---|---|---|---|---|---|---|---|
+  | `0` (`main`) | 0.9459 | 0.9231 | 0.9418 | 0.9094 | 0.9221 | 0.9216 | 0.9168 | |
+  | `1` | 0.9475 | 0.9246 | 0.9406 | 0.9075 | 0.9220 | 0.9209 | 0.9168 | 112 |
+  | `2` (after the fix, below) | 0.9475 | 0.9244 | 0.9406 | 0.9075 | 0.9220 | 0.9216 | 0.9167 | 93 |
+  | `3` (first run) | 0.9477 | 0.9250 | 0.9418 | 0.9091 | 0.9221 | 0.9210 | 0.9179 | 20 |
+  | `3` (re-run, below) | 0.9477 | 0.9248 | 0.9418 | 0.9091 | 0.9221 | 0.9216 | 0.9179 | 1 |
+  | `4` | 0.9470 | 0.9238 | 0.9403 | 0.9066 | 0.9216 | 0.9215 | 0.9159 | 167 |
+  | `5` | 0.9477 | 0.9248 | 0.9418 | 0.9091 | 0.9221 | 0.9216 | 0.9179 | 1 |
+
+  Mode 5 against `main` (unrounded means): `ctry` +0.0018, `intro` +0.0017, `land` −0.0000, `balloon` −0.0002, `traintnl` +0.0000, `bomb` −0.0000, `location` +0.0011; the re-run of mode 3 scores the same to four places.
+  Modes 1 to 3 ran before a fix to the vertex snap: they snapped a vertex whose ray misses the horizontal plane too (which `main` leaves unsnapped), and `bomb`'s mask IoU fell to 0.9499 in mode 2 as it did in [the snap-mode sweep](#2026-11-27-a-bounded-slide-that-keeps-the-snapped-pixel-or-clamps); modes 2, 4 and 5 ran after it, with `main`'s rule.
+  `winner: none adopts (best DBG_FRAG_DEPTH=5: film means short of +0.002 each or +0.004 on one; target idx +0.0051, not above +0.010)`.
+  - **The depth method is not what loses the ocean strip.**
+    Modes 1 and 2 match the plain raised slide (`DBG_TERRAIN_FACET=2`) on `land` (0.9406) and `balloon` (0.9075) with the same worst frames (`location` 2312 −0.0205, `balloon` 1156 −0.0192, `land` 199 −0.0133).
+    So a raised face's pixels near its foot lose to the ocean wherever the snapped foot edge sits below the face's true foot (the pixel's ray meets the ground first), whether the depth comes from a slide or per fragment (`[Hypothesis]`: the ocean is drawn first and the face then fails the `Greater` test; not probed pixel by pixel here); the capture draws the face there.
+  - **Clamping to the ground plane removes it on the frames scored.**
+    Mode 3 takes the nearer of the face's plane and the ground plane along the pixel's ray, which only changes a pixel the ray meets the ground first; `land` and `balloon` return to `main` (no frame of either moved by more than 0.005 outside the target window) and the hill is drawn on the target frames pictured ([298](images/ctry-298-per-fragment-depth-sloped-terrain-clamped.png), [331](images/ctry-331-per-fragment-depth-sloped-terrain-clamped.png), [364](images/ctry-364-per-fragment-depth-sloped-terrain-clamped.png); the pooled target SSIM rises 0.0097, the worst target frame 0.0014).
+    `[Hypothesis]` for why: the ground and the ocean are drawn first and the face passes `Greater` against them wherever it is no farther; a tie loses, and the ground's depth is rasterised where the clamp's is per fragment, so a pixel can still lose.
+  - **The first run of mode 3 lost `bomb`, and the cause was the snapping rule, not a flat patch.**
+    It drew ocean over `bomb`'s near ground on 20 frames (−0.0127 each; [picture](images/bomb-56-per-fragment-terrain-depth-clamped-guard.png)) and its masks fell as the snap-mode sweep's did; it snapped a vertex whose ray misses the horizontal plane, which `main` leaves unsnapped.
+    Re-run with `main`'s rule it scores as mode 5 (one frame down more than 0.005, `location` 4104 −0.0072; no `bomb` frame moves), so no carve-out for flat patches is needed; mode 5 was run on the first run's explanation (a depth tie with the ocean), which the re-run does not support.
+    The ocean and flat ground are drawn by `ground_pipeline`, whose compare is `Always`, so draw order settles them, not depth.
+    Mode 4 (the ocean per fragment too, after the fix) is worse, 167 frames down more than 0.005.
+    Mode 5: one frame of 297 down more than 0.005 (`location` 4104, −0.0071), 69 frames outside the target moved more than 0.005 (`ctry` 10, `intro` 31, `location` 28).
+  - **The gain is the slide family's.**
+    Mode 5's target index gain is +0.0051, the same +0.005 every slide variant of this issue reached, short of the +0.010 bar; no film reaches +0.002 (`ctry` +0.0018, `intro` +0.0017).
+    The bar's reason is circularity (the sweep picks the variant that scores best on frames the round chose, [`loop-rules.md`](../../../.agents/skills/improving-render-parity/loop-rules.md)); here the variant was not chosen by the target score, and every earlier form tried the same target and reached the same +0.005, which is a ceiling of the frames, not a selection effect (`[Hypothesis]`: the hill covers a small part of each frame).
+  - **Cost.**
+    Lavapipe renders of `location`, 300 ticks, three runs each, mean 5.58 s (mode 0) against 5.59 s (mode 5), which includes the `frag_depth` write in both; a GPU's early-depth loss was not measured (no GPU in this thread; it needs Legion).
+- **Verdict**: not adopted under the rule; modes 3 and 5 (the same to four places) are the first form that keeps the hill with no film loss beyond 0.0003 (`balloon` −0.00024), and [ADR 0059](../../../docs/adr/0059-sloped-terrain-takes-its-depth-per-fragment-from-its-own-plane.md) proposes it for the owner.
