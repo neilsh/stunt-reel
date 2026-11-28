@@ -33,3 +33,30 @@ The probe: `a4_probe.py` loads a script with `POST /script/load?debug=true` at t
 `debugmsg` works as a sink; the heap cap does not apply to what it writes.
 
 **Lives in.** `research/playone-exe/capture-dosbox-automation.md` §§ 1, 4.6 and Ruled out.
+
+## 2026-11-27: Streaming the composed buffers of CTRY through debugmsg
+
+**Question.** Does a per-frame stream of both composed buffers through `dosbox.debugmsg` give a whole picture for every pinned `CTRY` page, leave the recording unchanged, and fit the Lua budget? (#1211, Phase B step 1, the probe.)
+
+**Method.** Patch 3, stubbed samples, `capture` profile, dosbox-automation 0.85.1, scratch scripts in the project files folder (`1211-torn-video/b1_probe.py`, `b1_stats.py`, `b1_gate.py`, `b1_palette.py`, `b1_spin_calibrate.py`); every figure is in [`b1-probe-summary.txt`](b1-probe-summary.txt).
+`capture-video` ran with `luagen.video_script` patched to log, at each frame's row, both segment words (`layout.composed_pages`), whether `A000` rows 0..191 equal each buffer, and each buffer's rows 0..191 as hex, loaded with `?debug=true`.
+The pinned pages' rows 0..184 were compared as palette indices with the streamed buffers at `emu_frame - 8 .. + 8`.
+
+**Result.**
+
+* Every one of the 121 pinned pages equals a streamed buffer at offset 0: 119 the word the harness reads second (`word1`), 2 the other word (frames where `A000` equals it).
+  `A000` equals `word1` alone on 1,786 of 1,907 frames, `word0` alone on 31, both on 5.
+  The working palette rebuilt from the run's `meta.json` equals the page's palette on 121 of 121 pages at the same frame.
+  In the video the same pages were exact on 31 of 121 (Phase A).
+  The match holds by construction: the harness keeps a page only when `A000` rows 0..191 equal a composed buffer (`luagen.py`), so it shows the stream is read at the right frame and replays, and that a whole picture is present on the 90 pages where the video is torn, not that it is whole on frames the harness skips.
+* `A000` equals neither buffer on 85 frames (4.5%), the frames the harness would count as torn (`TRACE_TORN`); none of the 121 pinned frames is among them (all 119 are `(0,1,0)`, 2 are `(1,0,0)`), so they are not the video's 90 torn pages, whose pictures the stream holds at frames where `A000` was whole.
+* The stream leaves the recording alone: `capture.avi` and `meta.json` equal the stream-off run's, and two stream runs have equal payloads.
+* Cost: about 71 more Lua instructions a frame (estimate from a spin counter, one run each; the planner's 25 to 35 was too low).
+  The stream-off run used about 126,000 instructions, boot included, so one script holds between about 7,300 frames (all of that is per-frame) and about 12,300 (all boot); `LOCATION.FLM` (11,616 frames) may need two passes unless the row is lightened.
+  Wall time stayed 46 to 49 s across a stream, a stream-plus-spin and a spin-only run; the log is 469 MB for the two buffers.
+
+**Verdict.** Go on step 2 for `CTRY`.
+The front rule is open: "the word `A000` equals" matches all 121 pages by construction; which word is the newest finished picture on frames where `A000` equals neither, and whether each streamed picture is whole in `A000` at some frame, were not measured.
+The instruction cost is high enough that the row should be lightened (one buffer, one `debugmsg` a frame) before step 2 counts frames a script.
+
+**Lives in.** `research/playone-exe/capture-dosbox-automation.md` § 4.6.
