@@ -21,6 +21,7 @@ _Source: [the world base and decal draws](../../work/2026-11/distill-lavapipe-re
 
 **The plane shader's `prop_shape` lookup (#920, `a0fcd348`).**
 Replacing its binary search of the world's prop runs (31,441 on `LOCATION`) with a constant shape word cut the lavapipe loop 5.9% on Span B and 10.8% over the whole film (about 0.35 ms a frame), faster in 4 of 4 pairs, and moved nothing resolved on RTX 4070 Span B; the shapes store differed, so it is a probe, and 10.8% bounds what a per-vertex `shape_id` could save, from above.
+The per-vertex shape word that replaced the lookup (#1001) cut the whole film's loop 8.3% (one run of 4 pairs, faster in 3) and Span B's 5.9% with stores unchanged, and slowed the RTX 4070's whole film 4.6% ([`lavapipe-render-time.md` § 1](lavapipe-render-time.md#1-changes-that-cut-render-time)).
 _Source: [the per-fragment `prop_shape` lookup](../../work/2026-11/distill-lavapipe-render-time/journal.md#2026-11-22-what-the-per-fragment-prop_shape-lookup-costs-920)._
 
 **Decal pipeline switches batching would leave (#1000, `7bfc6cca`, CPU count).**

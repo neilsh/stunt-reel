@@ -22,7 +22,7 @@
     `#999`'s stage A already builds a per-frame runs table (`WorldStream::runs`, `987` pieces at most on the seven films); stage B, which draws from the stream, would write each streamed vertex's `ApexVertex::prop_shape` from those runs in the same pass that appends its apex, and drop the table's bind group, which `#1001` has already removed.
     `chunk_prop_runs` stays for stage A until then.
 - **Verdict**: adopted for the attempt; whether it lands waits on the lavapipe gate (the entry on the load check below).
-- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 6.
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 1.
 
 ## 2026-11-26: stores and peak memory with the per-vertex shape word
 
@@ -39,7 +39,7 @@
     The peaks of one cell spread at most `1` MiB.
     On lavapipe the renderer-opened reading rose `23.3` MiB (`763.6` to `786.9`) and the frames-rendered reading fell `54.6` MiB (`674.3` to `619.7`).
 - **Verdict**: the stores gate and the peak-memory gate hold on this machine (`+24.1` MiB against the `25.57` MiB bound; the attribute is `25.57` MiB of `LOCATION`'s world).
-- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 6.
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 1.
 
 ## 2026-11-26: the lavapipe loop gate stopped on the load check, and what the stopped runs show
 
@@ -60,7 +60,7 @@
   The runner's own bar (other load at most `0.10` over each run) was never met for a whole run, and no bar was raised.
   The stopped pairs are each more than `5%` faster, so a complete run at a quiet machine may pass, but these are 13 pairs from 12 runs, 12 of them a run's round 0 with base first (a fixed order, which `--order alternate` cancels), not 4 interleaved pairs of one run.
   The `RTX 4070` is reported below and never gates.
-- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 6.
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 1.
 
 ## 2026-11-26: the RTX 4070 loop, three pairs
 
@@ -70,4 +70,42 @@
 - **Method**: `mise run ab` as above with `--adapter gpu --name gpu-ab`, 4 rounds asked.
 - **Result**: it stopped on the load check after three pairs ([`gpu-ab.csv`](gpu-ab.csv)): base `8614.1`, `8604.9`, `8300.4 ms` and shape-word `8573.7`, `8570.9`, `8853.4 ms`, medians `8604.9` and `8573.7 ms` (`-0.4%`), faster in 2 of 3 pairs, other load `0.089..0.103`, the four hashes alike.
 - **Verdict**: nothing resolved: a `6.7%` slower third pair is larger than the `0.4%` median change.
-- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 6.
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 1.
+
+## 2026-11-27: the gates on the rebased change, and the owner's call
+
+`[Bounded Observation]`
+
+- **Question**: Does the per-vertex shape word, rebased onto `main` at `5951161`, hold `#1001`'s gates (stores, the whole `LOCATION` lavapipe loop at least `5%` lower and faster in all 4 pairs, Span B and the RTX 4070 reported), and does an instruction count agree?
+- **Method**:
+  - Owner's laptop (Windows, mesa-dist-win 25.2.8 and the RTX 4070), one release binary per side: `base` is `5951161`, `shape-word` is `acf55a0` (that base plus this change, before the third rebase below).
+    Stores: [`store_check.py`](store_check.py) on both adapters ([`rebased/stores.csv`](rebased/stores.csv), this run's rows only).
+    Loops: `mise run ab` as in the entries above, `--rounds 4 --order alternate`, at the default `--max-load 0.10` with another session's agent and the browser closed; each of the three runs completed on its first attempt ([`rebased/lavapipe-ab.csv`](rebased/lavapipe-ab.csv), [`rebased/lavapipe-ab-span-b.csv`](rebased/lavapipe-ab-span-b.csv), [`rebased/gpu-ab.csv`](rebased/gpu-ab.csv)).
+  - A cloud session (4 vCPUs, Ubuntu `mesa-vulkan-drivers 25.2.8`): `mise run icount` on the same two commits built for Linux, 3 repeats a variant, on Span B's first 30 and 60 ticks ([`rebased/icount-b30-summary.md`](rebased/icount-b30-summary.md), [`rebased/icount-b60-summary.md`](rebased/icount-b60-summary.md) and their CSVs).
+- **Result**:
+
+  | Measure | base | shape-word | Change | Pairs shape-word won |
+  |---|---|---|---|---|
+  | Lavapipe, whole `LOCATION` (`12..=8262`), median loop | `28,509.0 ms` | `26,143.4 ms` | `-8.3%` | 3 of 4 |
+  | Lavapipe, Span B (`3680..=3979`), median loop | `2,758.2 ms` | `2,595.1 ms` | `-5.9%` | 4 of 4 |
+  | RTX 4070, whole `LOCATION`, median loop (reported) | `9,868.4 ms` | `10,322.8 ms` | `+4.6%` | 0 of 4 |
+  | Instructions, Span B ticks `3680..=3709`, whole run | `28,159,572,670` | `26,759,290,554` | `-4.97%` (`299.6x` base range) | 3 repeats each |
+  | the same outside glibc's `malloc.c` and `memmove` | `26,593,611,349` | `25,214,126,982` | `-5.19%` (`1511.7x`) | |
+  | Instructions, ticks `3680..=3739`, whole run | `31,935,345,385` | `29,071,377,533` | `-8.97%` (`618.4x`) | |
+  | the same outside the allocator | `30,095,422,004` | `27,270,934,828` | `-9.39%` (`2031.1x`) | |
+
+  - Stores: all 14 film and adapter pairs hash alike (seven reference films, both adapters, `shapes.zst` included); every `mise run ab` and `mise run icount` run hashed its stores alike too.
+  - The one lavapipe pair `shape-word` lost (round 2, `28,548.4` against `28,849.0 ms`, `+1.1%`) ran at the highest other load of the run (`0.092`; the others `0.037..0.071`).
+  - On the RTX 4070 both sides slowed round by round (base `9,519.1` to `10,473.7 ms`), and `shape-word` lost every pair, including the two where it ran first.
+  - In the counts the JIT-compiled shader code (no symbols, `???`) fell `1,770,240,116` (30 ticks) and `3,219,790,292` (60 ticks) instructions in repeat 0; the upload's new work rose by about `0.66` billion (`apex_vertices` `+441.9M`, `GpuChunk::upload` `+109.1M`, `memset` `+104.1M` on the 30-tick span), a start-up cost.
+  - Callgrind with `--separate-threads` (2 repeats each, stores alike) splits the count by thread ([`rebased/callgrind-threads.md`](rebased/callgrind-threads.md)).
+    The main thread, our Rust and the upload, rose `+612,819,204` (`+3.04%`) on 30 ticks and `+624,465,012` (`+3.00%`) on 60, the same amount at both lengths.
+    Lavapipe's two worker threads fell: thread 2 by `10.00%` and `8.98%`, thread 3 by `57.51%` and `57.65%` (`2,605,161,552` to `1,107,018,777` on 30 ticks).
+    Each change is at least 90 times its base's repeat gap; the totals, `-5.05%` and `-8.94%`, sit about 0.2% below Cachegrind's whole-run counts.
+- **Verdict**: the lavapipe gate as written is missed on its direction clause (3 of 4 pairs) and met on its median (`-8.3%`, 3.3 points over the `5%` bar).
+  By the issue's rule mixed pairs go to the owner; with the count's agreement the owner chose on 2026-11-27 to land the change and record the RTX 4070 cost.
+  Why the RTX 4070 is slower is not measured; a larger second vertex stream is a candidate.
+- **The third rebase**: before merging, the change was rebased onto a `main` whose second vertex stream had become a point and a radius (`outline::Apex`, `Float32x4`, `#1159`) beside a list rank at location 4, and which had added a diagnostic look reading the prop runs (`#1189`).
+  The shape word moved to location 5 at offset 16 (`ApexVertex`, 20 B a vertex against `main`'s 16 B, the same `+4` B the runs above measured), and the diagnostic look reads it as the plane does.
+  The measured binaries predate that rebase; it was checked by `mise run check` and the GPU tests on cloud lavapipe, and the lavapipe expected pins were re-measured on the merged tree.
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 1.
