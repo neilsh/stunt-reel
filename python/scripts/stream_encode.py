@@ -2,7 +2,8 @@
 
 ``mise run stream-encode -- <dir> [--delete-log]`` writes ``<dir>/stream.mkv`` and
 ``<dir>/stream.json`` (see :mod:`stunt_reel.tac.stream`). ``--delete-log`` removes the log only
-after the round trip has passed. Exit 0 when encoded, 2 when the log is refused.
+after the round trip has passed. Exit 0 when encoded, 2 when the log, ffmpeg or the round trip is refused or a file cannot be
+read or written.
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Encode the log; 0 encoded, 2 refused."""
+    """Encode the log; 0 encoded, 2 refused or unwritable."""
     args = parse_args(argv)
     try:
         info = stream.encode_stream(

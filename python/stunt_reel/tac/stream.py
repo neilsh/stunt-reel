@@ -227,7 +227,8 @@ def encode_stream(log: Path, out_dir: Path, *, delete_log: bool = False) -> Stre
     temporary file that replaces stream.mkv only once the round trip matches (frame count and raw
     SHA-256) and before stream.json is written, so a refusal leaves an earlier stream.mkv and
     stream.json alone and the log in place. With *delete_log* the log is deleted only after
-    that. Raises StreamError on every failure.
+    that. Raises StreamError when the log, ffmpeg or the round trip is refused, and OSError when a
+    file or directory cannot be read or written.
     """
     ffmpeg = _ffmpeg()
     found = _Found()
