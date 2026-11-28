@@ -15,8 +15,8 @@ use crate::world_stream::WorldStream;
 
 /// The smallest buffer the stream creates, in bytes.
 ///
-/// The probe's largest frame is `3.74` MiB with a 12 B apex, and `75,576 * 4` B more with the
-/// 16 B [`ApexVertex`], about `4.03` MiB (journal, 2026-11-23): 8 MiB holds it. Another film,
+/// The probe's largest frame is `3.74` MiB with a 12 B apex, and `75,576 * 8` B more with the
+/// 20 B [`ApexVertex`], about `4.32` MiB (journal, 2026-11-23): 8 MiB holds it. Another film,
 /// lens or viewport may need more, which [`grown_capacity`] handles.
 const MIN_CAPACITY: u64 = 8 << 20;
 
@@ -195,11 +195,11 @@ mod tests {
     #[test]
     fn sections_lie_back_to_back_and_aligned() {
         let layout = layout(&stream(3, 6, 8));
-        assert_eq!(layout.vertices, 0..84);
-        assert_eq!(layout.apex, 84..132);
-        assert_eq!(layout.indices, 132..156);
-        assert_eq!(layout.edges, 156..188);
-        assert_eq!(layout.len, 188);
+        assert_eq!(layout.vertices, 0..96);
+        assert_eq!(layout.apex, 96..156);
+        assert_eq!(layout.indices, 156..180);
+        assert_eq!(layout.edges, 180..212);
+        assert_eq!(layout.len, 212);
         for start in [
             layout.vertices.start,
             layout.apex.start,
