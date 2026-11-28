@@ -60,3 +60,21 @@ The front rule is open: "the word `A000` equals" matches all 121 pages by constr
 The instruction cost is high enough that the row should be lightened (one buffer, one `debugmsg` a frame) before step 2 counts frames a script.
 
 **Lives in.** `research/playone-exe/capture-dosbox-automation.md` § 4.6.
+
+## 2026-11-28: The front rule on frames where A000 equals neither buffer
+
+**Question.** Which composed buffer holds the newest finished picture on frames where `A000` equals neither, so `capture-video` can stream a whole picture every frame? (#1211, Phase B step 2.)
+
+**Method.** The step 1 probe (`1211-torn-video/b1_probe.py` in the project files folder) rerun on `CTRY.FLM` (Patch 3, stubbed samples, `capture` profile), then a scratch analysis of its log hashing each buffer per frame (`front.py`, not committed).
+
+**Result.** `[Bounded Observation]`, one run.
+
+* The flags repeat step 1: `A000` equals the second word on 1,786 frames, the first on 31, both on 5, neither on 85; the words swap 696 times.
+* On the 85 frames, neither buffer's picture appears whole in `A000` in the 4 frames before; the second word's appears in the 4 after on 5 of 85, the first word's on none.
+* The second word's buffer changed with no word change on 967 frames, and 107 of its 1,623 distinct pictures never appear whole in `A000`: a buffer can be read mid-compose, so "always stream the second word" would stream partial pictures.
+* The rule adopted: stream `A000` rows 0..191 when they equal either buffer, else mark the frame held, for a decoder to repeat the last streamed picture.
+  `capture-video --stream` (the step 2 build) streamed 1,822 frames and held 85 on a second run, with `capture.avi` byte-identical to a stream-off recording; the log was 224 MB and also carries the emulator's own debug lines (about 9,500 `mem_read` traces), so a decoder filters on `] debugmsg: `.
+
+**Verdict.** Every streamed picture is whole by the harness's own test; held frames are the 4.5% where no whole picture exists at the boundary.
+
+**Lives in.** `research/playone-exe/capture-dosbox-automation.md` § 4.6.
