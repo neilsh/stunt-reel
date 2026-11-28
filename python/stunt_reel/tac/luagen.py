@@ -43,6 +43,7 @@ __all__ = [
     "clock_script",
     "keys_script",
     "script",
+    "segment_script",
     "video_script",
     "window_script",
 ]
@@ -84,6 +85,8 @@ WINDOW_SPAN: int = CLOCK_EVERY + WINDOW_SLACK
 WINDOW_LEAD: int = 2
 _KEY_NAME = re.compile(r"KBD_[a-z0-9_]+")
 _TOKEN = re.compile(r"[A-Za-z0-9]+")
+#: Frames a segment's skip waits in one call: a wait costs the same however long it is.
+_SKIP_CHUNK: int = 500
 
 
 @dataclass(frozen=True)
@@ -395,6 +398,24 @@ def window_script(
     )
 
 
+def _stream_frame(layout: PlayoneLayout) -> str:
+    """The Lua that logs the composed picture of frame ``f`` as ``p<f>:<flags>:<hex>``.
+
+    It runs inside a per-frame loop with ``f`` the frame just waited to and ``H`` the hex table.
+    """
+    page_a, page_b = layout.composed_pages
+    return (
+        f"  local w0 = dosbox.mem_read_word(DS, 0x{page_a:04X}); "
+        f"local w1 = dosbox.mem_read_word(DS, 0x{page_b:04X})\n"
+        f"  local b0 = dosbox.mem_read(w0, 0, {_COMPOSED_BYTES}); "
+        f"local b1 = dosbox.mem_read(w1, 0, {_COMPOSED_BYTES})\n"
+        f"  local a = dosbox.mem_read(0xA000, 0, {_COMPOSED_BYTES})\n"
+        "  local fl = (a == b0 and 1 or 0) + (a == b1 and 2 or 0)\n"
+        '  dosbox.debugmsg("p" .. f .. ":" .. fl .. ":" .. '
+        '(fl == 1 and b0 or b1):gsub(".", H))\n'
+    )
+
+
 def video_script(
     *,
     keys: Sequence[str],
@@ -427,18 +448,8 @@ def video_script(
     band = _PALETTE_BYTES // PALETTE_BANDS
     stream_start = stream_frame = stream_end = ""
     if stream_token is not None:
-        page_a, page_b = layout.composed_pages
         stream_start = f'dosbox.debugmsg("h{stream_token}:{layout.name}:1")\n'
-        stream_frame = (
-            f"  local w0 = dosbox.mem_read_word(DS, 0x{page_a:04X}); "
-            f"local w1 = dosbox.mem_read_word(DS, 0x{page_b:04X})\n"
-            f"  local b0 = dosbox.mem_read(w0, 0, {_COMPOSED_BYTES}); "
-            f"local b1 = dosbox.mem_read(w1, 0, {_COMPOSED_BYTES})\n"
-            f"  local a = dosbox.mem_read(0xA000, 0, {_COMPOSED_BYTES})\n"
-            "  local fl = (a == b0 and 1 or 0) + (a == b1 and 2 or 0)\n"
-            '  dosbox.debugmsg("p" .. f .. ":" .. fl .. ":" .. '
-            '(fl == 1 and b0 or b1):gsub(".", H))\n'
-        )
+        stream_frame = _stream_frame(layout)
         stream_end = 'dosbox.debugmsg("e" .. out["end"])\n'
     return (
         stream_start + f"local DS = 0x{layout.ds:04X}\n"
@@ -474,5 +485,53 @@ def video_script(
         "end\n" + stream_end + "dosbox.capture_stop()\n"
         'out.log = "x" .. table.concat(tr, ",")\n'
         'out.pal = "x" .. table.concat(pl, ",")\n'
+        "out.done = true\n"
+    )
+
+
+def segment_script(
+    *,
+    keys: Sequence[str],
+    layout: PlayoneLayout,
+    first: int,
+    last: int,
+    stream_token: str,
+) -> str:
+    """The Lua for one segment of a streamed video: boot with *keys*, then log frames *first*..*last*.
+
+    It boots as :func:`video_script` does and starts the capture, then waits (in calls of at most
+    :data:`_SKIP_CHUNK` frames, without per-frame work) to just before *first*. Each frame from
+    *first* to *last* logs its composed picture through ``debugmsg`` as :func:`video_script` does
+    (``h<token>`` opens the stream, the first statement). The ``out`` table holds ``cs`` (the frame
+    the capture started on, as ``x<frame>``) and ``bad`` (``x<frame>``, set and the loop left at the
+    first frame that is not the one expected), and ``done``. Each segment ends its stream with
+    ``exseg``, which merging drops. Raises ValueError for *first* below 1, *last* below *first*,
+    or a token that is not alphanumeric.
+    """
+    if first < 1:
+        raise ValueError(f"first must be at least 1, got {first}")
+    if last < first:
+        raise ValueError(f"the segment {first}..{last} is empty")
+    if not _TOKEN.fullmatch(stream_token):
+        raise ValueError(f"stream_token must be alphanumeric, got {stream_token!r}")
+    skip = first - 1
+    return (
+        f'dosbox.debugmsg("h{stream_token}:{layout.name}:1")\n'
+        f"local DS = 0x{layout.ds:04X}\n"
+        "local out = dosbox.output\n"
+        "local function wait_until(f) while dosbox.frame() < f do dosbox.wait_frames(1) end end\n"
+        "local H = {}\n"
+        'for i = 0, 255 do H[string.char(i)] = string.format("%02x", i) end\n'
+        + _keys_lua(keys)
+        + "dosbox.capture_start()\n"
+        'out.cs = "x" .. dosbox.frame()\n'
+        f"while dosbox.frame() < {skip} do "
+        f"dosbox.wait_frames(math.min({skip} - dosbox.frame(), {_SKIP_CHUNK})) end\n"
+        f"for e = {first}, {last} do\n"
+        "  dosbox.wait_frames(1)\n"
+        "  local f = dosbox.frame()\n"
+        '  if f ~= e then out.bad = "x" .. f; break end\n' + _stream_frame(layout) + "end\n"
+        'dosbox.debugmsg("exseg")\n'
+        "dosbox.capture_stop()\n"
         "out.done = true\n"
     )
