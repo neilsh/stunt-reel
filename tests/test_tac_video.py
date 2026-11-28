@@ -505,3 +505,19 @@ def test_a_run_without_stream_loads_without_debug(tmp_path: Path) -> None:
 
     assert mock.debug_flags == [False]
     assert not (tmp_path / "out" / video.STREAM_FILE).exists()
+
+
+def test_a_failed_move_never_hides_the_runner_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(*_args: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr("shutil.move", refuse)
+    with pytest.raises(automation.ScriptError):
+        _record_stream(
+            tmp_path,
+            monkeypatch,
+            lambda token: [("lua-debug-1.log", _stream_lines(token)[:2])],
+            fail=True,
+        )

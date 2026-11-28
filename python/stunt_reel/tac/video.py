@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 import shutil
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -246,7 +247,7 @@ def _stream_log(token: str, out_dir: Path) -> list[Path]:
 
     The header is the script's first ``debugmsg``, so only each log's first payload is read.
     Returns every log carrying *token*, the lone one already moved to ``out_dir / stream.log``,
-    replacing any file there; it raises nothing, so it can run while another error propagates.
+    replacing any file there. Filesystem errors propagate as ``OSError``.
     """
     header = f"h{token}:"
     found: list[Path] = []
@@ -302,8 +303,9 @@ def record_video(
 
     Raises ``VideoCaptureError`` for an unusable recording: no or several ``.avi``, an AVI
     parsing error, a frame-count mismatch, a log the capture document refuses (frames that
-    skip, a film clock that falls), no or several debug logs carrying the stream header or one without its trailer, or a
-    failed ``meta.json`` write. Runner and other filesystem errors propagate.
+    skip, a film clock that falls), no or several debug logs carrying the stream header or one
+    without its trailer, or a failed ``meta.json`` write. Runner and other filesystem errors
+    propagate; a failure to move the log never hides a runner error.
     """
     token = secrets.token_hex(8) if stream else ""
     script = luagen.video_script(
@@ -314,16 +316,18 @@ def record_video(
         stream=stream,
         token=token,
     )
-    logs: list[Path] = []
     try:
         with open_runner() as runner:
             if stream:
                 output = runner.run_script(script, timeout=VIDEO_TIMEOUT_SECONDS, debug=True)
             else:
                 output = runner.run_script(script, timeout=VIDEO_TIMEOUT_SECONDS)
-    finally:
+    except BaseException:
         if stream:
-            logs = _stream_log(token, out_dir)
+            with suppress(OSError):
+                _stream_log(token, out_dir)
+        raise
+    logs = _stream_log(token, out_dir) if stream else []
     decoded = decode_video_log(output)
     if stream:
         if len(logs) != 1:
