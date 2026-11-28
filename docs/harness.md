@@ -1,6 +1,6 @@
 # Agents and harnesses
 
-This repository is worked by more than one agent harness — DeepSeek Harness, Claude Code and Antigravity today, some of them hosted in T3 Code, and whichever one the next contributor brings — as well as by people.
+This repository is worked by more than one agent harness — DeepSeek Harness, Claude Code, Antigravity and Codex today, some of them hosted in T3 Code, and whichever one the next contributor brings — as well as by people.
 The policy below is the same for all of them because it is a policy of the repository; the notes under it are capability facts about one harness on one host, which is why they are dated and kept apart.
 Nothing here is a fact about Stunt Island.
 
@@ -13,18 +13,18 @@ Nothing here is a fact about Stunt Island.
   Unattended runs use about two implementers the same way, except each opens its own PR; a dependent item starts after its parent merges, or is stacked and armed after it.
 * **Route implementers by `model-tier:` and `model-context:` labels, then by fit** ([`triage-labels.md`](agents/triage-labels.md#model-roles)); the labels advise, and a model Neil names wins:
 
-  | Labels | Claude Code (cloud or local) | `local-windows` with dsh / Antigravity |
+  | Labels | Claude Code (cloud or local) | `local-windows` with dsh / Antigravity / Codex |
   | --- | --- | --- |
-  | `light` | `Haiku` | dsh first, else `Haiku` |
+  | `light` | `Haiku` | dsh first, else `Haiku` or Codex (`Luna`) |
   | `light` + `wide` | `Haiku` if the material fits in about 100K tokens, else `Sonnet` | dsh first, else as for Claude Code |
-  | `medium` | `Haiku` first when the plan names the files, the change and the test that must pass, else `Sonnet` | As for Claude Code |
-  | `heavy` | `Opus` | `Opus` or Antigravity |
-  | `wide` on `medium` or `heavy` | The tier's model, with the harness's long-context option where offered | Likewise |
+  | `medium` | `Haiku` first when the plan names the files, the change and the test that must pass, else `Sonnet` | As for Claude Code, or Codex (`Sol`) / Antigravity instead of `Sonnet` |
+  | `heavy` | `Opus` | `Opus`, Antigravity or Codex (`Astra`) |
+  | `wide` on `medium` or `heavy` | The tier's model, with the harness's long-context option where offered | A `wide` model for the tier from [`harness/models.md`](harness/models.md) (`medium` + `wide` may use Codex `Sol`; `heavy` + `wide` uses `Opus` or Antigravity, not `Astra`) |
 
-  Which vendor models fill each tier and context class is in [`harness/models.md`](harness/models.md).
+  Which vendor models and starting effort levels fill each tier and context class is in [`harness/models.md`](harness/models.md).
   An issue with a tier routes by it, which takes precedence over dsh-first: dsh is eligible only for `model-tier:light`, whose work is the simple bounded work below.
-  An issue with no tier, or two, keeps the fit rules: dsh first where the spec is clear and the task needs no judgment over evidence (prefix-cache hit rate is not the test); `Sonnet` for other well-specified implementation; `Opus` for research, diagnosis, design, and items expected to need rounds of hypotheses.
-  Otherwise subagents use the session model (`inherit`) and the same provider's `fast` tier only for simple bounded work (`Haiku` on Claude Code, `Gemini 4 Hydrogen` / `flash` on Antigravity): surveys, mapping tables, mechanical edits, grading against a calibrated rubric, and browser UI; never escalate above the session model or switch provider families outside this routing.
+  An issue with no tier, or two, keeps the fit rules across available providers: dsh first (when available) where the spec is clear and the task needs no judgment over evidence (prefix-cache hit rate is not the test); a `medium` model (`Sonnet`, `Sol` or `Orchestrator (Neon)` at `medium`) for other well-specified implementation; a `heavy` model (`Opus`, `Orchestrator (Neon)` at `high`, or `Astra`) for research, diagnosis, design, and items expected to need rounds of hypotheses.
+  Otherwise subagents use the session model (`inherit`) and the same provider's `fast` tier only for simple bounded work (`Haiku` on Claude Code, `Gemini 4 Hydrogen` / `flash` on Antigravity, `Luna` on Codex): surveys, mapping tables, mechanical edits, grading against a calibrated rubric, and browser UI; never escalate above the session model or switch provider families outside this routing.
 * **Haiku first, then Sonnet** (adopted 2026-11-27 for cost: Haiku costs about a twentieth of Sonnet per token under a 100K-token prompt, so a failed Haiku attempt costs little).
   A Haiku builder stops and reports instead of pushing on when the gate fails twice, the change needs a file or a decision the plan does not name, or its context passes about 100K tokens, past which Haiku's price is five times higher.
   A stopped attempt, or a Haiku-built PR whose review finds more than wording, is redone from the plan by a fresh `Sonnet` session, not patched; the redo's PR says `escalated: from Haiku`, and a `light` issue also moves up to `medium` (the bump in [`loop-and-bounds.md`](../.agents/skills/running-unattended/loop-and-bounds.md) step 6).
@@ -33,12 +33,12 @@ Nothing here is a fact about Stunt Island.
 * **A PR body names its route** in one line ([`worker-brief.md`](../.agents/skills/running-unattended/worker-brief.md) step 6), `Route: built by <model> · <tier label or no tier> · escalated: no | from <model> · refactor: none | small | reviewed`, so rework can be counted per tier from merged PRs (`refactor:` records the higher-tier refactor commit below, `small` or second-`reviewed`, and is `none` when there was none): rework rate = (escalated PRs + PRs needing a fix or revert within 14 days of merge) / PRs merged, where the 14 days is this policy's choice of window.
   Haiku-first on `medium` is a trial: after 10 Haiku-built `medium` PRs, a rework rate over 30% sends `medium` back to `Sonnet`, and a revert for a fault its review should have caught moves the first review of Haiku-built `light` PRs from the `reviewer` agent to Opus, or adds a second, Antigravity review after the Opus one on `medium`.
 * **Review:** dispatch the Sonnet [reviewer agent](../.claude/agents/reviewer.md) by default, for first reviews and re-reviews.
-  The first review of a Sonnet- or dsh-built PR, or of a Haiku-built `medium` PR, is the exception: Opus or Antigravity, as a general-purpose subagent with `model: opus` and `Opus` as `<Reviewer>` in the brief, or as an Antigravity worker; not the `reviewer` agent with a model override, which names `Sonnet`.
+  The first review of a `medium`-built (`Sonnet`, Codex `Sol`, Antigravity `medium`, or Haiku on `medium`) or dsh-built PR is the exception: Opus, Antigravity `heavy` (`Orchestrator (Neon)` at `high`) or Codex (`Astra`), as a general-purpose subagent with `model: opus` and `Opus` as `<Reviewer>` in the brief, or as an Antigravity or Codex worker; not the `reviewer` agent with a model override, which names `Sonnet`.
   On #160 a Sonnet review missed four real bugs that an Opus review then found, among them a preflight that built despite `--no-build`.
-  A Haiku-built `light` PR gets the `reviewer` agent with the plan comment in its brief, since the review checks the diff against an exact plan; it goes to Opus instead when the diff touches `crates/stunt-core/src/contracts/` or a path rule 5 names.
+  A Haiku- or `Luna`-built `light` PR gets the `reviewer` agent with the plan comment in its brief, since the review checks the diff against an exact plan; it goes to an available `heavy` reviewer (`Opus` in Claude Code) instead when the diff touches `crates/stunt-core/src/contracts/` or a path rule 5 names.
   Re-reviews prefer Antigravity when Gemini quota allows, otherwise the `reviewer` agent; they cover only what changed since the last reviewed commit, run once after every finding is fixed, and are skipped for a wording-only fix (reply with the new text), except on a PR whose diff touches a path rule 5 names: any fix, rebase or merge there is committed locally and re-reviewed at its SHA before the push, and a rebase or merge needs a fresh `clean` comment at the new head; for a conflict only in `research/MAP.md`, that re-review only confirms `mise run knowledge-map -- --check` and a diff showing only `main`'s files ([`pr-and-filing.md`](../.agents/skills/running-unattended/pr-and-filing.md) step 1).
 * **A higher-tier first review also improves the code** (adopted 2026-11-27, so the cheaper builder's work gets the stronger model's refactors as well as its fixes).
-  When the first review runs on a model a tier above the builder's (any Opus or Antigravity first review of a Sonnet-, dsh- or Haiku-built PR, and the `reviewer` agent on a Haiku-built `light` one), it marks each item of its `Alternatives` section `apply`, for a refactor or improvement worth its cost on this PR, or `owner`, for one that needs Neil's choice or reaches past the diff.
+  When the first review runs on a model a tier above the builder's (any Opus, Antigravity-heavy or Codex-heavy first review of a `medium`- or dsh-built PR, and the `reviewer` agent on a Haiku- or `Luna`-built `light` one), it marks each item of its `Alternatives` section `apply`, for a refactor or improvement worth its cost on this PR, or `owner`, for one that needs Neil's choice or reaches past the diff.
   After every finding is fixed, a fresh session on the reviewer's model applies the `apply` items from the review comment as one `refactor:` commit and sets the PR's `Route:` line, which stays `refactor: none` when no item is marked `apply` or every one is dropped; the reviewer itself still never edits the branch, and an item found wrong on contact is dropped with a reply on the PR saying why.
   The commit is *small* when it changes no behaviour (no output, test expectation, public signature, CLI flag or file path), touches neither `crates/stunt-core/src/contracts/` nor a path rule 5 names, and changes at most about 40 lines; renames, dead-code removal and calls to an existing helper usually are.
   The refactor session judges *small* and states the changed-line count in its PR reply.
@@ -55,7 +55,7 @@ Nothing here is a fact about Stunt Island.
 * **Prototypes stop once measured:** no PR polish, review or docs until one is chosen; run parallel prototypes only for decisions that are hard to undo.
   Measuring is optional — compare cost with `ccusage` blocks and sessions joined to roles; the quality guard is that no merged PR needs a fix or revert afterwards.
 * **Subagent-driven development reviews once per PR.**
-  `superpowers:subagent-driven-development` runs one fresh-context review of the finished branch before the PR — the `reviewer` agent, or Opus or Antigravity for a Sonnet- or dsh-built branch; a fix wave goes straight to the gate.
+  `superpowers:subagent-driven-development` runs one fresh-context review of the finished branch before the PR — the `reviewer` agent, or Opus, Antigravity `heavy` (`Orchestrator (Neon)` at `high`) or Codex (`Astra`) for a `medium`- or dsh-built branch; a fix wave goes straight to the gate.
   Size each task so its implementer finishes within about 150 turns.
 * **A subagent leaves nothing running when it reports.**
   It runs the gate in the foreground (on Claude Code, with a 600 s timeout) and stops any background job or monitor before its report: on #578 a Haiku implementer's leftover monitors woke it after its report, and it reported three more times.
@@ -178,7 +178,7 @@ Observed on a Debian 12 cloud VM, 2026-11-18 ([`cloud-antigravity.md`](../.agent
 
 Observed on `local-windows`, 2026-11-22, with Claude as the thread's provider:
 
-* **What it is:** A desktop app that runs a provider's agent (Claude through the Agent SDK, dsh, Antigravity and others) in a thread, and adds its own MCP tools for delegating to child threads of any enabled provider, scheduling and pull requests; [`t3.md`](../.agents/skills/running-unattended/t3.md) is how an unattended run uses them.
+* **What it is:** A desktop app that runs a provider's agent (Claude through the Agent SDK, dsh, Antigravity, Codex and others) in a thread, and adds its own MCP tools for delegating to child threads of any enabled provider, scheduling and pull requests; [`t3.md`](../.agents/skills/running-unattended/t3.md) is how an unattended run uses them.
 * **What it confines and asks:** Each thread has a permission mode (Supervised, Auto-accept edits, Auto, Full access); a child inherits its parent's and cannot exceed it.
   In a Claude thread, the `SessionStart` hook printed `environment: local-windows` as it does in Claude Code, and the thread had `T3CODE_THREAD_ID` set.
 * **Where it works:** A new thread's worktree goes under the T3 home's `worktrees` folder (`~/.t3/worktrees/<project>/<name>`) unless [`harness-setup.md` § T3 Code](harness-setup.md#t3-code) moves it, on a `t3/` branch; it reaches the data root by configuration like any worktree ([ADR 0036](adr/0036-worktrees-reach-shared-state-by-configuration.md)).
@@ -223,6 +223,7 @@ Give a harness its own `docs/harness/<tool>.md`, as DeepSeek Harness has, when i
 | DeepSeek Harness | `~/.dsh` on this host | no — host-local |
 | Claude Code | [.claude/settings.json](../.claude/settings.json), `.claude/skills` (link to `.agents/skills/`) plus `~/.claude/settings.json` | repo files yes, user file no |
 | Antigravity | [`.agents/environment.json`](../.agents/environment.json), [`.agents/skills/`](../.agents/skills/) plus `~/.gemini/antigravity` and cloud `/home/antigravity/env-setup.sh` | repo files yes, user files no |
+| Codex | `~/.codex/config.toml` on this host | no — host-local |
 | T3 Code | `~/.t3` on this host, plus the thread provider's own settings | no — host-local |
 
 A checkout cannot ship the DeepSeek Harness policy, so [`harness/deepseek.md`](harness/deepseek.md) and this page are the repository's record of what it should be.

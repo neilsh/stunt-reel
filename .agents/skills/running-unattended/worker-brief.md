@@ -42,7 +42,7 @@ A cloud child session (`create_session`) gets the brief above and these changes:
 
 ## Planner brief
 
-A `status:needs-plan` dispatch runs read-only on Opus or frontier with no branch or PR:
+A `status:needs-plan` dispatch runs read-only on an available `heavy` model from [`models.md`](../../../docs/harness/models.md) with no branch or PR:
 
 1. Read the issue body and comments (the coordinator has already claimed it with `status:in-progress` and `Claimed by planner <id>.`).
 2. Investigate read-only with no branch, code edits or PR, and verify every `file:line` and figure against the checkout ("Cite what you read", [`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions)).
