@@ -882,7 +882,7 @@ const APEX_BLOCK: usize = 1 << 16;
 /// `apex`'s `ranges` back to back as [`ApexVertex`]es, each with the shape word of the run in
 /// `runs` (in vertex order) that holds its source vertex, 0 when none does. A range that leaves
 /// `apex` contributes nothing.
-fn apex_vertices<'a>(
+pub(crate) fn apex_vertices<'a>(
     apex: &'a [Apex],
     ranges: &'a [Range<usize>],
     runs: &'a [PropRun],
@@ -1038,34 +1038,6 @@ pub(crate) fn plan_upload(
         slices.push(out);
     }
     UploadPlan { chunks, slices }
-}
-
-/// `runs`, in source vertex order, as `[first, end, shape id + 1]` in the vertex numbering of
-/// a chunk that holds the source vertices `ranges` back to back: each run is cut to every
-/// range it meets and moved to where that range lies in the chunk. A run that meets no range
-/// is left out.
-pub(crate) fn chunk_prop_runs(runs: &[PropRun], ranges: &[Range<usize>]) -> Vec<[u32; 3]> {
-    let mut table = Vec::new();
-    let mut at = 0usize;
-    for range in ranges {
-        let from = runs.partition_point(|run| run.end as usize <= range.start);
-        for run in runs
-            .iter()
-            .skip(from)
-            .take_while(|run| (run.first as usize) < range.end)
-        {
-            // Both ends lie in `range`, so neither subtraction can wrap.
-            let first = (run.first as usize).max(range.start) - range.start;
-            let end = (run.end as usize).min(range.end) - range.start;
-            table.push([
-                arena_index(at.saturating_add(first)),
-                arena_index(at.saturating_add(end)),
-                u32::from(run.shape).saturating_add(1),
-            ]);
-        }
-        at = at.saturating_add(range.len());
-    }
-    table
 }
 
 /// A chunk's vertex count as the `i32` base vertex `draw_indexed` takes.
@@ -1295,36 +1267,6 @@ mod tests {
         // A floor faces down, and a wall flattens to no area.
         assert!(!faces_flattened(&shadow, point, -Vec3::Y));
         assert!(!faces_flattened(&shadow, point, Vec3::X));
-    }
-
-    /// An unsplit chunk keeps the runs' vertex numbers; a split one cuts each run to the
-    /// windows it copied and renumbers it from where its window lies in the chunk.
-    #[test]
-    fn chunk_prop_runs_follow_the_chunks_vertex_windows() {
-        let runs = [
-            PropRun {
-                first: 2,
-                end: 5,
-                shape: 7,
-            },
-            PropRun {
-                first: 5,
-                end: 8,
-                shape: 9,
-            },
-            PropRun {
-                first: 12,
-                end: 14,
-                shape: 3,
-            },
-        ];
-        let whole = chunk_prop_runs(&runs, std::slice::from_ref(&(0..14)));
-        assert_eq!(whole, [[2, 5, 8], [5, 8, 10], [12, 14, 4]]);
-        // Source vertices 6..10 then 0..4: chunk vertices 0..4 then 4..8; run 12..14 lies
-        // in neither.
-        let split = chunk_prop_runs(&runs, &[6..10, 0..4]);
-        assert_eq!(split, [[0, 2, 10], [6, 8, 8]]);
-        assert!(chunk_prop_runs(&[], std::slice::from_ref(&(0..14))).is_empty());
     }
 
     fn source(index_offset: u32, index_count: u32) -> SourceSlice {

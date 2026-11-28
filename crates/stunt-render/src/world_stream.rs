@@ -2,15 +2,17 @@
 //!
 //! [`WorldStream::rebuild`] stages, on the CPU, the ground, base and decal slices of one frame
 //! from an unsplit [`WorldSource`], each slice's vertex window, indices, outline indices and
-//! apexes back to back, and returns slices addressing the stream. A slice of a split world is an
-//! error. Nothing draws from the stream yet.
+//! apexes back to back, and returns slices addressing the stream. Each streamed vertex's apex is
+//! the 20 B [`ApexVertex`] the baked upload holds for it, its prop shape word included, so the
+//! stream needs no runs table. A slice of a split world is an error. Nothing draws from the
+//! stream yet.
 
 use std::ops::Range;
 
 use stunt_core::contracts::{SodVertex, arena_index};
 use stunt_core::world::PropRun;
 
-use crate::mesh::{GpuMeshSlice, chunk_prop_runs};
+use crate::mesh::{ApexVertex, GpuMeshSlice, apex_vertices};
 use crate::outline::Apex;
 
 /// What a stream copies from: one unsplit model's buffers, as the baked upload holds them.
@@ -24,7 +26,8 @@ pub(crate) struct WorldSource<'a> {
     pub indices: &'a [u32],
     /// The model's outline indices, into `vertices`, as the one chunk's edge buffer holds them.
     pub edges: &'a [u32],
-    /// The model's prop runs, in vertex order.
+    /// The model's prop runs, in vertex order: each streamed vertex takes the shape word of the
+    /// run that holds its source vertex.
     pub prop_runs: &'a [PropRun],
 }
 
@@ -41,15 +44,12 @@ pub(crate) struct SliceOutsideSource;
 pub(crate) struct WorldStream {
     /// The copied vertex windows, back to back.
     pub vertices: Vec<SodVertex>,
-    /// The windows' apexes, one per streamed vertex.
-    pub apex: Vec<Apex>,
+    /// The windows' apexes and prop shape words, one per streamed vertex.
+    pub apex: Vec<ApexVertex>,
     /// The slices' indices, rebased to the streamed vertices.
     pub indices: Vec<u32>,
     /// The slices' outline indices, rebased to the streamed vertices.
     pub edges: Vec<u32>,
-    /// The prop runs in streamed vertex numbering, `[first, end, shape id + 1]`: the lookup that
-    /// `ApexVertex::prop_shape` (`crate::mesh`) holds per vertex.
-    pub runs: Vec<[u32; 3]>,
     /// The ground slices, in draw order.
     pub ground: Vec<GpuMeshSlice>,
     /// The base slices, in the order given.
@@ -90,7 +90,6 @@ impl WorldStream {
         self.apex.clear();
         self.indices.clear();
         self.edges.clear();
-        self.runs.clear();
         self.ground.clear();
         self.base.clear();
         self.decals.clear();
@@ -116,7 +115,6 @@ impl WorldStream {
             let streamed = self.append(source, slice)?;
             self.decals.push(streamed);
         }
-        self.runs = chunk_prop_runs(source.prop_runs, &self.windows);
         Ok(())
     }
 
@@ -141,7 +139,9 @@ impl WorldStream {
             .vertices
             .get(range.clone())
             .ok_or(SliceOutsideSource)?;
-        let apex = source.apex.get(range.clone()).ok_or(SliceOutsideSource)?;
+        if source.apex.get(range.clone()).is_none() {
+            return Err(SliceOutsideSource);
+        }
 
         let streamed = GpuMeshSlice {
             chunk: 0,
@@ -162,7 +162,11 @@ impl WorldStream {
         self.indices.extend(indices.iter().map(|&at| rebase(at)));
         self.edges.extend(edges.iter().map(|&at| rebase(at)));
         self.vertices.extend_from_slice(vertices);
-        self.apex.extend_from_slice(apex);
+        self.apex.extend(apex_vertices(
+            source.apex,
+            std::slice::from_ref(&range),
+            source.prop_runs,
+        ));
         if !range.is_empty() {
             self.windows.push(range);
         }
@@ -320,7 +324,9 @@ mod tests {
             .expect("every slice is the source's");
 
         assert_eq!(bytes(&stream.vertices), bytes(&ir.vertices));
-        assert_eq!(bytes(&stream.apex), bytes(&apex));
+        let baked_apex: Vec<ApexVertex> =
+            apex_vertices(&apex, std::slice::from_ref(&(0..apex.len())), &[]).collect();
+        assert_eq!(bytes(&stream.apex), bytes(&baked_apex));
         assert_eq!(bytes(&stream.indices), bytes(&ir.indices));
         assert_eq!(bytes(&stream.edges), bytes(&edges));
         // Every slice lands where the baked one is, so each draws the same index range.
@@ -328,7 +334,6 @@ mod tests {
         assert_eq!(stream.base, slices[2..4]);
         assert_eq!(stream.decals, slices[4..]);
         assert!(stream.decals.iter().all(|slice| slice.is_decal));
-        assert!(stream.runs.is_empty());
     }
 
     #[test]
@@ -408,7 +413,7 @@ mod tests {
     }
 
     #[test]
-    fn the_runs_table_follows_the_streamed_windows() {
+    fn each_streamed_vertex_carries_the_shape_word_of_its_source_vertex() {
         let fixture = Fixture::world();
         let ir = &fixture.ir;
         let apex = fixture.apex();
@@ -443,8 +448,12 @@ mod tests {
         stream
             .rebuild(&source, [slices[1]], [slices[3], slices[2]], [])
             .expect("held");
-        // Streamed: ground 0..4, base 4..12 (source 12..20), base 12..16 (source 8..12).
-        assert_eq!(stream.runs, [[4, 6, 7], [6, 12, 5], [12, 16, 6]]);
+        let words: Vec<u32> = stream.apex.iter().map(|v| v.prop_shape).collect();
+        let expected = [0, 0, 0, 0, 7, 7, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6];
+        assert_eq!(words, expected);
+        // The apex positions are the source's, in streamed order.
+        assert_eq!(stream.apex[4].apex, apex[12]);
+        assert_eq!(stream.apex[12].apex, apex[8]);
     }
 
     #[test]
@@ -521,7 +530,7 @@ mod tests {
             let staged = stream.rebuild(&source, [slices[0]], [bad], []);
             assert_eq!(staged, Err(SliceOutsideSource));
             assert!(stream.vertices.is_empty() && stream.indices.is_empty());
-            assert!(stream.ground.is_empty() && stream.runs.is_empty());
+            assert!(stream.ground.is_empty() && stream.apex.is_empty());
         }
         // An outline edge joining a vertex outside the slice's triangles is not the slice's.
         let mut stray = edges.clone();
