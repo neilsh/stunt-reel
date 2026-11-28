@@ -335,7 +335,27 @@ impl GpuModel {
         prop_runs: &[PropRun],
         outlined: Option<Outlines<'_>>,
     ) -> Self {
-        let limit = device.limits().max_buffer_size;
+        let (mut model, chunk_plans, edges) =
+            Self::plan(device.limits().max_buffer_size, ir, outlined);
+        model.chunks = chunk_plans
+            .iter()
+            .zip(&edges)
+            .enumerate()
+            .map(|(n, (chunk, edges))| {
+                GpuChunk::upload(device, queue, ir, (apex, prop_runs), n, chunk, edges)
+            })
+            .collect();
+        model
+    }
+
+    /// Plans the model for a device whose largest buffer is `limit` bytes, without creating
+    /// any buffer: the model has no [`Self::chunks`], and the chunks' plans and outline lists
+    /// are returned for [`GpuChunk::upload`].
+    fn plan(
+        limit: u64,
+        ir: &SodModelIr,
+        outlined: Option<Outlines<'_>>,
+    ) -> (Self, Vec<ChunkPlan>, Vec<Vec<u32>>) {
         // A buffer larger than the address space is capped at what it can address.
         let max_vertices =
             usize::try_from(limit / size_of::<SodVertex>() as u64).unwrap_or(usize::MAX);
@@ -369,19 +389,13 @@ impl GpuModel {
             Some((keep, marks)) => plan_edges(&mut plan, ir, keep, marks),
             None => (vec![Vec::new(); plan.chunks.len()], Vec::new()),
         };
-        let chunks = plan
-            .chunks
-            .iter()
-            .zip(&edges)
-            .enumerate()
-            .map(|(n, (chunk, edges))| {
-                GpuChunk::upload(device, queue, ir, (apex, prop_runs), n, chunk, edges)
-            })
-            .collect();
-
         // Translate nodes into GpuNode flat arena
         marks.resize_with(plan.slices.len(), Vec::new);
-        let mut planned = plan.slices.into_iter().zip(marks);
+        let UploadPlan {
+            chunks: chunk_plans,
+            slices,
+        } = plan;
+        let mut planned = slices.into_iter().zip(marks);
         let bounds = node_bounds(ir);
         let discs = node_discs(ir);
         let nodes = ir
@@ -407,9 +421,9 @@ impl GpuModel {
             .collect();
 
         let bounds = model_bounds(&ir.root_nodes, &bounds);
-        Self {
+        let model = Self {
             name: ir.name.clone(),
-            chunks,
+            chunks: Vec::new(),
             vertex_count: arena_index(ir.vertices.len()),
             index_count: arena_index(ir.indices.len()),
             nodes,
@@ -419,7 +433,23 @@ impl GpuModel {
                 .vertices
                 .iter()
                 .any(|vertex| vertex.flags & VERTEX_FLAG_DISC != 0),
-        }
+        };
+        (model, chunk_plans, edges)
+    }
+
+    /// The planning of [`Self::from_ir_outlined`] alone, for a device whose largest buffer is
+    /// `max_buffer_size` bytes: the model, with no [`Self::chunks`] and so no device buffer, and
+    /// the outline list the one chunk's edge buffer would hold. `None` when the model would
+    /// split into more than one chunk, which the world stream does not follow.
+    pub(crate) fn plan_outlined(
+        max_buffer_size: u64,
+        ir: &SodModelIr,
+        outlined: fn(&SodVertex) -> bool,
+        marks: &[u32],
+    ) -> Option<(Self, Vec<u32>)> {
+        let (model, chunk_plans, mut edges) =
+            Self::plan(max_buffer_size, ir, Some((outlined, marks)));
+        (chunk_plans.len() == 1).then(|| (model, edges.remove(0)))
     }
 
     /// Whether any vertex the model can draw may land inside `view_proj`'s view frustum, by
@@ -1867,6 +1897,33 @@ mod tests {
         );
         ir.root_nodes = vec![parent];
         ir
+    }
+
+    /// Planning the world without a device gives the nodes' slices and the one chunk's outline
+    /// list `plan_edges` gives for the same plan, and no buffer; a model the limit splits
+    /// is not planned.
+    #[test]
+    fn plan_outlined_gives_the_slices_and_outline_without_buffers() {
+        let ir = two_node_ir(0.0);
+        let sources = [source(0, 3), source(3, 3)];
+        let mut plan = plan_upload(6, &ir.indices, &sources, usize::MAX, usize::MAX);
+        let (edges, marks) = plan_edges(&mut plan, &ir, |_| true, &[0, 3, 6]);
+
+        let (model, outline) =
+            GpuModel::plan_outlined(u64::MAX, &ir, |_| true, &[0, 3, 6]).expect("one chunk");
+        assert!(model.chunks.is_empty());
+        assert_eq!(outline, edges[0]);
+        assert_eq!(model.nodes.len(), 2);
+        for (node, (slices, marks)) in model.nodes.iter().zip(plan.slices.iter().zip(&marks)) {
+            assert_eq!(&node.meshes, slices);
+            assert_eq!(&node.marks, marks);
+        }
+        assert_eq!(model.vertex_count, 6);
+        assert_eq!(model.root_nodes, ir.root_nodes);
+
+        // Room for three vertices a buffer splits the six into two chunks.
+        let limit = 3 * size_of::<SodVertex>() as u64;
+        assert!(GpuModel::plan_outlined(limit, &ir, |_| true, &[]).is_none());
     }
 
     /// A meshless model holding only its box and whether it has discs.
