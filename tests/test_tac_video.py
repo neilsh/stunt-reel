@@ -403,6 +403,17 @@ def test_the_stream_finder_picks_the_log_that_carries_its_token(logs_dir: Path) 
     assert video._find_stream_log("BBB", logs_dir) == logs_dir / "lua-debug-2-b.log"
 
 
+def test_the_emulator_log_dir_follows_localappdata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    assert video.emulator_log_dir() == tmp_path / "xdg" / "dosbox-automation" / "logs"
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    assert video.emulator_log_dir() == tmp_path / "local" / "dosbox-automation" / "logs"
+
+
 def test_the_stream_finder_refuses_no_log_and_two_logs(logs_dir: Path) -> None:
     (logs_dir / "lua-debug-1-a.log").write_bytes(_stream_log("AAA", 1))
     (logs_dir / "lua-debug-2-b.log").write_bytes(_stream_log("AAA", 1))

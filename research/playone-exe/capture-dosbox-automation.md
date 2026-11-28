@@ -19,7 +19,7 @@ Measurements ran 2026-10-30 to 2026-11-01 on one 16-core host.
 * **Capture:** `dosbox.capture_start()` / `capture_stop()` records lossless ZMBV AVI, one video frame per emulated frame.
   The REST call takes only `mode` (`raw` or `rendered`); nothing drops the audio stream.
 * **Absent:** the debugger (`debugger` is `false` in the OpenAPI document): no breakpoints, pause, step or hooks ([ADR 0034](../../docs/adr/0034-breakpoints-run-on-dosbox-x.md)).
-* **`dosbox.debugmsg(s)` is a file sink** (`[Bounded Observation]`, `v0.85.1`, 500 lines of 128,000 characters and 500 real `A000` pages): with the script loaded as `POST /script/load?debug=true` it appends `[F:<frame> T:<time>] debugmsg: <s>` to `<config dir>/logs/lua-debug-<time>-<script name>.log` and flushes per call.
+* **`dosbox.debugmsg(s)` is a file sink** (`[Bounded Observation]`, `v0.85.1`, 500 lines of 128,000 characters and 500 real `A000` pages): with the script loaded as `POST /script/load?debug=true` it appends `[F:<frame> T:<time>] debugmsg: <s>` to `<config dir>/logs/lua-debug-<time>-<script name>.log` (`<config dir>` is `$XDG_CONFIG_HOME/dosbox-automation` or `~/.config/dosbox-automation` on Linux, observed on a cloud session, and `%LOCALAPPDATA%\dosbox-automation` on Windows, observed on Legion) and flushes per call.
   The code has no size cap, and a string is cut at its first NUL (`nul\0tail` arrived as `nul`).
   500 synthetic lines (64 MB) arrived byte for byte, and 500 `A000` pages ran in 1.2 s without a heap error (their content was not checked); the 16 MB Lua heap (100 held strings of 128,000 characters ran, 140 died `not enough memory`) limits what a script keeps, not what it writes.
   The instruction count and peak heap were not measured (`collectgarbage` is removed).
