@@ -135,3 +135,21 @@ Scratch scripts in the project files folder: `s2_gate.py` (pinned pages against 
 **Verdict.** The ADR 0057 rule is neither confirmed nor changed: the key test still fails on whole pictures, so tears are not its cause; no adopted rule or score is touched.
 
 **Lives in.** `research/playone-exe/capture-dosbox-automation.md` § 4.6.
+
+## 2026-11-28: Step 5, segmented stream passes
+
+**Question.** Can a film that does not fit one script (`LOCATION.FLM`, which fails with `--stream`: "instruction limit exceeded" after about 157 s on the Legion recording, its stream-off recording succeeding) be streamed whole by replaying it in segments, with segments that agree on their shared frames?
+
+**Method.** `capture-video --stream --stream-segment N` (new, built by a Haiku worker and checked here): the stream-off recording first, then one emulator run per segment (the same boot keys and `capture_start()`, a chunked `wait_frames` skip to the frame before the segment's first, then the stream lines only), merged into `stream.log`.
+`CTRY.FLM` with N = 700 (three segments) against the single-pass run in the project's scratch folder; `LOCATION.FLM` with N = 6,000, then `stream-encode` and `video-derive reference-check location --stream`.
+
+**Result.** `[Bounded Observation]`, one run each.
+
+* `CTRY.FLM`, 700-frame segments (frames 1276 to 1975, 1975 to 2674, 2674 to 3182): `capture.avi`, `meta.json` and the stream's raw SHA-256 (`afbdd910d785...`) equal the single-pass run's.
+* `LOCATION.FLM`, 6,000-frame segments (1276 to 7275, 7275 to 12891): 11,616 frames, `hold`, 118 palette changes, `stream.log` 1.43 GB, `stream.mkv` 52.4 MB for 713.7 MB raw in about 11 s of encoding; flags 0: 608, 1: 203, 2: 10,654, 3: 151.
+  The merge accepted the shared frame 7275 (byte-identical in both runs).
+* 745 of 745 pinned `LOCATION` pages equal the stream picture at offset 0, none on a held frame, working palette equal on 745 of 745.
+
+**Verdict.** Segmented passes work on the two films tried; step 5 is done. Films past about 11,616 frames and a larger segment length are untried.
+
+**Lives in.** `research/playone-exe/capture-dosbox-automation.md` § 4.6.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import re
 from contextlib import nullcontext, suppress
@@ -22,7 +23,11 @@ from stunt_reel.tac import automation, luagen, playone, video
 from stunt_reel.tac.automation import MockAutomation
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from contextlib import AbstractContextManager
     from pathlib import Path
+
+    from stunt_reel.parity_artifacts import VideoCapture
 
 pytestmark = pytest.mark.windows
 
@@ -483,3 +488,325 @@ def test_record_video_with_a_stream_runs_in_debug_and_files_the_log(
     assert (out_dir / "stream.log").exists()
     assert not (logs_dir / "lua-debug-9-run.log").exists()
     assert (out_dir / "meta.json").exists()
+
+
+#: The single-pass scripts as they were before the segment refactor; their text must not change.
+_GOLDEN_PLAIN = r"""local DS = 0x0F46
+local out = dosbox.output
+local function wait_until(f) while dosbox.frame() < f do dosbox.wait_frames(1) end end
+local H = {}
+for i = 0, 255 do H[string.char(i)] = string.format("%02x", i) end
+wait_until(1200)
+for _, k in ipairs({"KBD_c", "KBD_enter"}) do
+  dosbox.wait_frames(20); dosbox.key(k, true); dosbox.wait_frames(5); dosbox.key(k, false)
+end
+dosbox.mouse_move(-2000, 2000)
+dosbox.capture_start()
+out.cs = "x" .. dosbox.frame()
+out.pal0 = "x" .. dosbox.mem_read(DS, 0x2768, 768):gsub(".", H)
+local tr, pl, lt, hold, ppal = {}, {}, -1, 0, dosbox.mem_read(DS, 0x2768, 768)
+out["end"] = "xcapped"
+for i = 1, 500 do
+  dosbox.wait_frames(1)
+  local f = dosbox.frame()
+  local t = dosbox.mem_read_word(DS, 0x4896); local g = dosbox.mem_read_word(DS, 0x22B8)
+  local sc = dosbox.mem_read_word(DS, 0x489A); local st = dosbox.mem_read_word(DS, 0x22DC)
+  tr[#tr + 1] = f .. ":" .. t .. ":" .. g .. ":" .. sc .. ":" .. st
+  local pal = dosbox.mem_read(DS, 0x2768, 768)
+  if pal ~= ppal then
+    for b = 0, 7 do
+      local s = pal:sub(b * 96 + 1, b * 96 + 96)
+      if s ~= ppal:sub(b * 96 + 1, b * 96 + 96) then pl[#pl + 1] = f .. ":" .. b .. ":" .. s:gsub(".", H) end
+    end
+    ppal = pal
+  end
+  if t == lt then hold = hold + 1 else hold = 0; lt = t end
+  if t > 0 and hold >= 30 then out["end"] = "xhold"; break end
+end
+dosbox.capture_stop()
+out.log = "x" .. table.concat(tr, ",")
+out.pal = "x" .. table.concat(pl, ",")
+out.done = true
+"""
+_GOLDEN_STREAMED = r"""dosbox.debugmsg("hab12:patch3:1")
+local DS = 0x0E66
+local out = dosbox.output
+local function wait_until(f) while dosbox.frame() < f do dosbox.wait_frames(1) end end
+local H = {}
+for i = 0, 255 do H[string.char(i)] = string.format("%02x", i) end
+wait_until(1200)
+for _, k in ipairs({"KBD_c", "KBD_enter"}) do
+  dosbox.wait_frames(20); dosbox.key(k, true); dosbox.wait_frames(5); dosbox.key(k, false)
+end
+dosbox.mouse_move(-2000, 2000)
+dosbox.capture_start()
+out.cs = "x" .. dosbox.frame()
+out.pal0 = "x" .. dosbox.mem_read(DS, 0x20EE, 768):gsub(".", H)
+local tr, pl, lt, hold, ppal = {}, {}, -1, 0, dosbox.mem_read(DS, 0x20EE, 768)
+out["end"] = "xcapped"
+for i = 1, 500 do
+  dosbox.wait_frames(1)
+  local f = dosbox.frame()
+  local w0 = dosbox.mem_read_word(DS, 0x1C50); local w1 = dosbox.mem_read_word(DS, 0x1C52)
+  local b0 = dosbox.mem_read(w0, 0, 61440); local b1 = dosbox.mem_read(w1, 0, 61440)
+  local a = dosbox.mem_read(0xA000, 0, 61440)
+  local fl = (a == b0 and 1 or 0) + (a == b1 and 2 or 0)
+  dosbox.debugmsg("p" .. f .. ":" .. fl .. ":" .. (fl == 1 and b0 or b1):gsub(".", H))
+  local t = dosbox.mem_read_word(DS, 0x421C); local g = dosbox.mem_read_word(DS, 0x1C3E)
+  local sc = dosbox.mem_read_word(DS, 0x4220); local st = dosbox.mem_read_word(DS, 0x1C62)
+  tr[#tr + 1] = f .. ":" .. t .. ":" .. g .. ":" .. sc .. ":" .. st
+  local pal = dosbox.mem_read(DS, 0x20EE, 768)
+  if pal ~= ppal then
+    for b = 0, 7 do
+      local s = pal:sub(b * 96 + 1, b * 96 + 96)
+      if s ~= ppal:sub(b * 96 + 1, b * 96 + 96) then pl[#pl + 1] = f .. ":" .. b .. ":" .. s:gsub(".", H) end
+    end
+    ppal = pal
+  end
+  if t == lt then hold = hold + 1 else hold = 0; lt = t end
+  if t > 0 and hold >= 30 then out["end"] = "xhold"; break end
+end
+dosbox.debugmsg("e" .. out["end"])
+dosbox.capture_stop()
+out.log = "x" .. table.concat(tr, ",")
+out.pal = "x" .. table.concat(pl, ",")
+out.done = true
+"""
+
+
+def test_the_single_pass_scripts_are_unchanged() -> None:
+    assert _script() == _GOLDEN_PLAIN
+    assert _script(stream_token="ab12", layout=playone.PATCH3) == _GOLDEN_STREAMED  # noqa: S106 - a log token, not a secret
+
+
+@pytest.mark.parametrize(
+    ("first", "last", "length", "expected"),
+    [
+        (101, 105, 10, [(101, 105)]),
+        (101, 101, 100, [(101, 101)]),
+        (0, 10, 5, [(0, 4), (4, 8), (8, 10)]),
+        (0, 8, 5, [(0, 4), (4, 8)]),
+        (0, 3, 2, [(0, 1), (1, 2), (2, 3)]),
+    ],
+)
+def test_stream_segments_cover_the_frames_with_one_frame_overlaps(
+    first: int, last: int, length: int, expected: list[tuple[int, int]]
+) -> None:
+    ranges = video.stream_segments(first, last, length)
+
+    assert ranges == expected
+    assert ranges[0][0] == first
+    assert ranges[-1][1] == last
+    assert all(b - a + 1 <= length for a, b in ranges)
+    assert all(next_a == prev_b for (_, prev_b), (next_a, _) in itertools.pairwise(ranges))
+
+
+@pytest.mark.parametrize(
+    ("first", "last", "length", "message"),
+    [(0, 10, 1, "at least 2"), (0, 10, 0, "at least 2"), (5, 4, 100, "are empty")],
+)
+def test_stream_segments_refuse_a_short_segment_or_empty_frames(
+    first: int, last: int, length: int, message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        video.stream_segments(first, last, length)
+
+
+def test_segment_script_boots_then_skips_and_logs_each_frame_of_its_range() -> None:
+    text = luagen.segment_script(
+        keys=KEYS,
+        layout=playone.PATCH3,
+        first=500,
+        last=699,
+        stream_token="ab12",  # noqa: S106 - a log token
+    )
+
+    assert text.startswith('dosbox.debugmsg("hab12:patch3:1")\n')
+    assert text.index('dosbox.debugmsg("hab12') < text.index("wait_until(1200)")
+    assert text.index("dosbox.key(k, false)") < text.index("dosbox.capture_start()")
+    assert text.index("dosbox.capture_start()") < text.index("while dosbox.frame() < 499 do")
+    assert "dosbox.wait_frames(math.min(499 - dosbox.frame(), 500))" in text
+    assert "for e = 500, 699 do" in text
+    assert "  dosbox.wait_frames(1)\n  local f = dosbox.frame()\n" in text
+    assert 'if f ~= e then out.bad = "x" .. f; break end' in text
+    assert (
+        text.index("for e = 500")
+        < text.index('dosbox.debugmsg("p"')
+        < text.index('dosbox.debugmsg("exseg")')
+    )
+    assert text.endswith('dosbox.debugmsg("exseg")\ndosbox.capture_stop()\nout.done = true\n')
+    assert 'out.cs = "x" .. dosbox.frame()' in text
+
+
+def test_segment_script_from_frame_one_has_nothing_to_skip() -> None:
+    text = luagen.segment_script(
+        keys=KEYS,
+        layout=playone.UNPATCHED,
+        first=1,
+        last=3,
+        stream_token="a",  # noqa: S106 - a log token
+    )
+
+    assert "while dosbox.frame() < 0 do" in text
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"first": 0, "last": 5}, "first must be at least 1"),
+        ({"first": 6, "last": 5}, "is empty"),
+        ({"first": 1, "last": 5, "stream_token": 'a"b'}, "alphanumeric"),
+    ],
+)
+def test_segment_script_refuses_bad_bounds_and_tokens(
+    kwargs: dict[str, object], message: str
+) -> None:
+    args: dict[str, object] = {"keys": KEYS, "layout": playone.UNPATCHED, "stream_token": "ab12"}
+    args.update(kwargs)
+    with pytest.raises(ValueError, match=message):
+        luagen.segment_script(**args)  # type: ignore[arg-type]
+
+
+def _frame_line(frame: int, *, hex_byte: str = "00") -> bytes:
+    prefix = f"[F:{frame:05d} T:00:00:01.000] "
+    return f"{prefix}debugmsg: p{frame}:1:{hex_byte * 4}\n".encode()
+
+
+class _SegmentRunner:
+    """Answers a recording as dosbox would: pass 0 plain, each segment with its own debug log."""
+
+    def __init__(
+        self,
+        logs: Path,
+        pass0: dict[str, object],
+        *,
+        cs: str = "x100",
+        differ_at: int | None = None,
+        silent_segment: int | None = None,
+    ) -> None:
+        self._logs = logs
+        self._pass0 = pass0
+        self._cs = cs
+        self._differ_at = differ_at
+        self._silent = silent_segment
+        self.segments: list[tuple[int, int]] = []
+        self.debug: list[bool] = []
+
+    def run_script(
+        self,
+        text: str,
+        *,
+        timeout: float,  # noqa: ARG002
+        debug: bool = False,
+    ) -> dict[str, object]:
+        self.debug.append(debug)
+        if not debug:
+            return self._pass0
+        token = re.search(r'debugmsg\("h([A-Za-z0-9]+):', text)
+        span = re.search(r"for e = (\d+), (\d+) do", text)
+        assert token is not None
+        assert span is not None
+        first, last = int(span[1]), int(span[2])
+        self.segments.append((first, last))
+        number = len(self.segments)
+        if number != self._silent:
+            lines = [f"[F:00001 T:00:00:00.000] debugmsg: h{token[1]}:UNPATCHED:1\n".encode()]
+            for frame in range(first, last + 1):
+                hex_byte = "ff" if first == frame == self._differ_at else "00"
+                lines.append(_frame_line(frame, hex_byte=hex_byte))
+            lines.append(b"[F:00009 T:00:00:01.000] debugmsg: exseg\n")
+            lines.append(b"[F:00010 T:00:00:01.000] script completed: ok\n")
+            (self._logs / f"lua-debug-{number}-seg.log").write_bytes(b"".join(lines))
+        return {"done": True, "cs": self._cs}
+
+
+def _pass0(frames: int) -> dict[str, object]:
+    rows = ",".join(f"{101 + n}:{7 if n == 0 else 8}:{n}:5:{n}" for n in range(frames))
+    return _output(log=f"x{rows}")
+
+
+def _segmented(
+    tmp_path: Path,
+    logs_dir: Path,
+    *,
+    frames: int = 7,
+    segment: int = 3,
+    runner_args: dict[str, Any] | None = None,
+) -> tuple[Path, _SegmentRunner, Path, VideoCapture]:
+    out_dir, recording = tmp_path / "out", tmp_path / "recording"
+    recording.mkdir()
+    (recording / "capture-0001.avi").write_bytes(
+        build_avi([bytes([n]) * 3 for n in range(frames)], [])
+    )
+    runner = _SegmentRunner(logs_dir, _pass0(frames), **(runner_args or {}))
+
+    def open_segment(capture_dir: Path) -> Callable[[], AbstractContextManager[Any]]:
+        assert capture_dir.is_dir()
+        return lambda: nullcontext(runner)
+
+    progress: list[str] = []
+    capture = video.record_video(
+        lambda: nullcontext(runner),
+        out_dir,
+        recording,
+        keys=KEYS,
+        layout=playone.UNPATCHED,
+        film=FILM,
+        provenance={},
+        stream_to=out_dir / "stream.log",
+        stream_segment=segment,
+        open_segment=open_segment,
+        progress=progress.append,
+    )
+    assert progress[0] == "segment 1 of 3: frames 101 to 103"
+    return out_dir, runner, recording, capture
+
+
+def test_a_segmented_stream_merges_the_segments_into_one_log(
+    tmp_path: Path, logs_dir: Path
+) -> None:
+    out_dir, runner, recording, capture = _segmented(tmp_path, logs_dir)
+
+    assert runner.debug == [False, True, True, True]
+    assert runner.segments == [(101, 103), (103, 105), (105, 107)]
+    lines = (out_dir / "stream.log").read_bytes().splitlines(keepends=True)
+    assert lines[0].startswith(b"[F:00001 T:00:00:00.000] debugmsg: h")
+    assert lines[0].endswith(b":UNPATCHED:1\n")
+    assert lines[1:-1] == [_frame_line(frame) for frame in range(101, 108)]
+    assert lines[-1] == b"[F:00107 T:00:00:01.000] debugmsg: exhold\n"
+    assert capture.rows == 7
+    assert not any(logs_dir.glob("lua-debug-*.log"))
+    assert not list(recording.parent.glob("segment-*"))
+    assert (out_dir / "meta.json").exists()
+
+
+def test_an_overlap_that_differs_is_refused_naming_the_frame(
+    tmp_path: Path, logs_dir: Path
+) -> None:
+    with pytest.raises(video.VideoCaptureError, match=r"segment 3 differs.*frame 105"):
+        _segmented(tmp_path, logs_dir, runner_args={"differ_at": 105})
+    assert not (tmp_path / "out" / "meta.json").exists()
+
+
+def test_a_segment_that_began_another_frame_is_refused(tmp_path: Path, logs_dir: Path) -> None:
+    with pytest.raises(video.VideoCaptureError, match="began its capture at frame 102, not 100"):
+        _segmented(tmp_path, logs_dir, runner_args={"cs": "x102"})
+
+
+def test_a_segment_without_its_log_is_refused(tmp_path: Path, logs_dir: Path) -> None:
+    with pytest.raises(video.VideoCaptureError, match="found no"):
+        _segmented(tmp_path, logs_dir, runner_args={"silent_segment": 2})
+
+
+def test_a_segmented_stream_needs_its_opener(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="stream_to and open_segment"):
+        video.record_video(
+            lambda: nullcontext(MockAutomation(lambda _lua: _output())),
+            tmp_path / "out",
+            tmp_path,
+            keys=KEYS,
+            layout=playone.UNPATCHED,
+            film=FILM,
+            provenance={},
+            stream_segment=100,
+        )

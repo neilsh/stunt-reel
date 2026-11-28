@@ -55,6 +55,7 @@ __all__ = [
     "film_start_frame",
     "layout_offsets",
     "record_video",
+    "stream_segments",
 ]
 
 #: Cap on a recording, in emulated frames: 7.1 minutes at 70.09 Hz, well past the longest
@@ -265,13 +266,17 @@ def _find_stream_log(token: str, log_dir: Path) -> Path:
 
 
 def _file_stream(token: str, stream_to: Path, rows: int) -> None:
-    """Move this run's emulator log to *stream_to* and check it holds one picture per row.
+    """Move this run's emulator log to *stream_to* and check it (see :func:`_check_stream`)."""
+    shutil.move(_find_stream_log(token, emulator_log_dir()), stream_to)
+    _check_stream(stream_to, rows)
 
-    The log must hold an ``e`` trailer after its last ``p`` line (the emulator adds its own lines after it) and hold exactly *rows* ``p`` lines. It is read a
-    line at a time: it runs to hundreds of megabytes.
+
+def _check_stream(stream_to: Path, rows: int) -> None:
+    """Check a stream log holds one ``p`` line per row and an ``e`` trailer after its last one.
+
+    The emulator adds its own lines after the trailer, which are allowed. It is read a line at a
+    time: it runs to hundreds of megabytes.
     """
-    source = _find_stream_log(token, emulator_log_dir())
-    shutil.move(source, stream_to)
     pictures = 0
     closed = False
     with stream_to.open("rb") as handle:
@@ -289,6 +294,144 @@ def _file_stream(token: str, stream_to: Path, rows: int) -> None:
         )
 
 
+def stream_segments(first: int, last: int, length: int) -> list[tuple[int, int]]:
+    """Inclusive frame ranges of at most *length* frames covering *first* to *last*.
+
+    Consecutive ranges share exactly one frame, so each segment's first picture is the one the
+    previous segment ended on, and merging drops the repeat. One range when the frames fit.
+    Raises ``ValueError`` for *length* below 2 or *last* below *first*.
+    """
+    if length < 2:
+        raise ValueError(f"a segment holds at least 2 frames, got {length}")
+    if last < first:
+        raise ValueError(f"the frames {first}..{last} are empty")
+    ranges: list[tuple[int, int]] = []
+    start = first
+    while True:
+        end = min(start + length - 1, last)
+        ranges.append((start, end))
+        if end == last:
+            return ranges
+        start = end
+
+
+def _check_segment(output: Mapping[str, Any], first: int, last: int, started: int) -> None:
+    """Refuse a segment pass that did not finish, went out of order or began another frame."""
+    if output.get("done") is not True:
+        raise VideoCaptureError(f"segment {first}..{last} did not finish")
+    if "bad" in output:
+        bad = _number(_text(output, "bad"), "bad")
+        raise VideoCaptureError(
+            f"segment {first}..{last} reached frame {bad} out of order, so its frames differ"
+        )
+    begun = _number(_text(output, "cs"), "cs")
+    if begun != started:
+        raise VideoCaptureError(
+            f"segment {first}..{last} began its capture at frame {begun}, not {started}"
+        )
+
+
+def _merge_streams(
+    sources: Sequence[Path], stream_to: Path, first: int, last: int, end: str
+) -> None:
+    """Write the segments' pictures as one stream log, in frame order, to *stream_to*.
+
+    The first segment's header opens the stream. Each later segment's first picture must equal
+    the previous segment's last, byte for byte, and is dropped. Other lines (segment trailers,
+    the emulator's own) are dropped too. A trailer ``e<end>`` (``end`` without its ``x``) closes
+    it. Raises ``VideoCaptureError`` for a repeat that differs, frames out of order, or a stream
+    that does not cover *first* to *last*. Each source is read a line at a time.
+    """
+    expected = first
+    previous: bytes | None = None
+    prefix: bytes | None = None
+    header: bytes | None = None
+    with stream_to.open("wb") as out:
+        for index, source in enumerate(sources):
+            overlap_checked = index == 0
+            with source.open("rb") as handle:
+                for line in handle:
+                    at = line.find(b"debugmsg: ")
+                    if at < 0:
+                        continue
+                    payload = line[at + len(b"debugmsg: ") :].rstrip(b"\r\n")
+                    if payload.startswith(b"h"):
+                        if header is None and index == 0:
+                            header = line
+                            out.write(line)
+                        continue
+                    if not payload.startswith(b"p"):
+                        continue
+                    frame = _number(payload[1:].split(b":")[0].decode(), "stream picture")
+                    if not overlap_checked:
+                        if payload != previous:
+                            raise VideoCaptureError(
+                                f"segment {index + 1} differs from the one before it at frame "
+                                f"{frame}: its first picture is not the last one before"
+                            )
+                        overlap_checked = True
+                        continue
+                    if frame != expected:
+                        raise VideoCaptureError(
+                            f"the stream reached frame {frame} where frame {expected} was due"
+                        )
+                    expected += 1
+                    previous, prefix = payload, line[:at]
+                    out.write(line)
+            if not overlap_checked:
+                raise VideoCaptureError(f"segment {index + 1} logged no pictures")
+        if header is None:
+            raise VideoCaptureError("the first segment's stream has no header line")
+        if prefix is None or expected != last + 1:
+            raise VideoCaptureError(f"the segments end at frame {expected - 1}, not {last}")
+        out.write(prefix + b"debugmsg: e" + b"x" + end.encode() + b"\n")
+
+
+def _record_segments(
+    open_segment: Callable[[Path], Callable[[], AbstractContextManager[ScriptRunner]]],
+    recording_dir: Path,
+    stream_to: Path,
+    decoded: VideoLog,
+    *,
+    keys: Sequence[str],
+    layout: PlayoneLayout,
+    length: int,
+    progress: Callable[[str], None] | None,
+) -> None:
+    """Replay the film in segments, one emulator run each, and merge their pictures into *stream_to*.
+
+    Each segment runs in its own empty capture directory beside *recording_dir*, deleted once the
+    segment passes. The segment logs are deleted only after the merged stream is written.
+    """
+    frames = decoded.log.frame
+    if not frames:
+        raise VideoCaptureError("the recording logged no frames to stream")
+    first, last = frames[0], frames[-1]
+    if frames != tuple(range(first, last + 1)):
+        raise VideoCaptureError("the recording's frames are not consecutive, so no segment fits")
+    ranges = stream_segments(first, last, length)
+    sources: list[Path] = []
+    for number, (start, stop) in enumerate(ranges, start=1):
+        if progress is not None:
+            progress(f"segment {number} of {len(ranges)}: frames {start} to {stop}")
+        token = secrets.token_hex(8)
+        script = luagen.segment_script(
+            keys=keys, layout=layout, first=start, last=stop, stream_token=token
+        )
+        capture_dir = recording_dir.parent / f"segment-{number:03d}"
+        capture_dir.mkdir()
+        with open_segment(capture_dir)() as runner:
+            streaming = cast("StreamScriptRunner", runner)
+            output = streaming.run_script(script, timeout=VIDEO_TIMEOUT_SECONDS, debug=True)
+        _check_segment(output, start, stop, decoded.capture_start_frame)
+        sources.append(_find_stream_log(token, emulator_log_dir()))
+        shutil.rmtree(capture_dir)
+    _merge_streams(sources, stream_to, first, last, decoded.end)
+    _check_stream(stream_to, len(frames))
+    for source in sources:
+        source.unlink()
+
+
 def record_video(
     open_runner: Callable[[], AbstractContextManager[ScriptRunner]],
     out_dir: Path,
@@ -301,6 +444,10 @@ def record_video(
     cap: int = VIDEO_MAX_FRAMES,
     emulator: EmulatorInfo | None = None,
     stream_to: Path | None = None,
+    stream_segment: int | None = None,
+    open_segment: Callable[[Path], Callable[[], AbstractContextManager[ScriptRunner]]]
+    | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> VideoCapture:
     """Run the recording script, then file its AVI and log into *out_dir*.
 
@@ -314,17 +461,27 @@ def record_video(
     With *stream_to* each frame's composed picture is also logged by debugmsg; the emulator's
     log of that run is moved there and checked (see :func:`_file_stream`).
 
+    With *stream_segment* (at least 2 frames) the recording runs first without the stream, then
+    the film is replayed in segments of that many frames, each a fresh emulator run through
+    *open_segment* (given an empty capture directory it writes into), and the pictures are merged
+    into *stream_to* (see :func:`_record_segments`). *progress* receives a line per segment.
+
     Raises ``VideoCaptureError`` for an unusable recording: no or several ``.avi``, an AVI
     parsing error, a frame-count mismatch, a log the capture document refuses (frames that
-    skip, a film clock that falls), a stream log that is missing or does not match, or a failed
-    ``meta.json`` write. Runner and other filesystem errors propagate.
+    skip, a film clock that falls), a stream log that is missing or does not match, a segment
+    that does not match the recording, or a failed ``meta.json`` write. Runner and other
+    filesystem errors propagate. Raises ``ValueError`` for *stream_segment* without *stream_to*
+    or *open_segment*, or below 2.
     """
-    token = secrets.token_hex(8) if stream_to is not None else None
+    if stream_segment is not None and (stream_to is None or open_segment is None):
+        raise ValueError("a segmented stream needs stream_to and open_segment")
+    segmented = stream_segment is not None
+    token = secrets.token_hex(8) if stream_to is not None and not segmented else None
     script = luagen.video_script(
         keys=keys, cap=cap, end_hold=END_HOLD_FRAMES, layout=layout, stream_token=token
     )
     with open_runner() as runner:
-        if stream_to is None:
+        if token is None:
             output = runner.run_script(script, timeout=VIDEO_TIMEOUT_SECONDS)
         else:
             streaming = cast("StreamScriptRunner", runner)
@@ -339,6 +496,17 @@ def record_video(
     out_dir.mkdir(parents=True, exist_ok=True)
     if stream_to is not None and token is not None:
         _file_stream(token, stream_to, len(decoded.log.frame))
+    elif stream_to is not None and stream_segment is not None and open_segment is not None:
+        _record_segments(
+            open_segment,
+            recording_dir,
+            stream_to,
+            decoded,
+            keys=keys,
+            layout=layout,
+            length=stream_segment,
+            progress=progress,
+        )
     try:
         video_frames = video_only(recordings[0], out_dir / VIDEO_FILE)
     except AviError as exc:
