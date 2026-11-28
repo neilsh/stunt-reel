@@ -902,3 +902,14 @@ def test_a_missing_archive_is_refused_before_launch(
     )
     assert code == 2
     assert emulator.launches == 0
+
+
+def test_stream_needs_out(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    module = load_script(VIDEO)
+    monkeypatch.setattr(sys, "argv", [f"{VIDEO}.py", "--stream"])
+    with pytest.raises(SystemExit) as stopped:
+        module.parse_args()
+    assert stopped.value.code == 2
+    assert "--stream needs --out" in capsys.readouterr().err
