@@ -16,6 +16,7 @@ The owner ruled on 2026-11-22 that architecture alone justifies replacing the ba
 - **Design note and ADR draft, awaiting the owner.** [`design.md`](design.md) lists what each step removes and adds and eight open calls; [`adr-draft.md`](adr-draft.md) is proposed, to move into `docs/adr/` on acceptance.
 - **Stage A, #1091.** `crates/stunt-render/src/world_stream.rs` stages a frame's ground, base and decal slices on the CPU; an offline test shows streaming every node reproduces the baked buffers byte for byte.
   Nothing draws from it: stage B (#999's sub-issue order) does.
+- **Stage B plan (2026-11-27).** [`plan.md`](plan.md) details stage B (#1092) as two stacked PRs on PR #1101 (#1001), whose per-vertex shape word the stream carries instead of a runs table; stages C and D follow as their own layers, each planned from the layer below's figures.
 - **Not started.** Drawing from the stream, the timing gate and the un-baking, each against the issue's gates.
   `#1001` was not timed and the note draws no conclusion from it: the owner holds it on `#1004`'s A/A result.
 
