@@ -11,18 +11,18 @@ A single-PR item finishes implementation, review and thread triage during the ru
 A `status:needs-plan` item posts a tentative plan (`status:plan-review` or `status:ready-for-agent`) without coding; an item needing a multi-PR spec or human decision records its handoff, swaps to `status:ready-for-human` or `status:plan-review`, and moves on.
 
 It runs in either environment of [`working-in-an-environment`](../working-in-an-environment/SKILL.md): read that skill and your environment's file before step 1.
-Orca, dsh, Antigravity, PowerShell and the disk checks are `local-windows` resources; a cloud session follows **Cloud** below and `cloud.md` wherever this skill names one.
+Orca, T3, dsh, Antigravity, Codex, PowerShell and disk checks are `local-windows` resources; cloud sessions (Claude-only) follow **Cloud** and `cloud.md`.
 
 ## Concurrency and models
 
 - **Coordinator:** the current session's model; reads no diffs or issue bodies, keeps `build/scratch/run-state.md`, restarts instead of compacting, checks CodeRabbit once, and dispatches per [`coordinator.md`](coordinator.md) (T3 Code below).
-- **Workers by labels, then fit:** an issue's `model-tier:` and `model-context:` labels pick the worker per the [`harness.md`](../../../docs/harness.md#policy-any-agent) table, going up a tier on evidence; with none or two tiers: dsh first where the spec is clear, Sonnet for other well-specified work, Opus for research, diagnosis, design, hypothesis rounds; planning goes to Opus.
-  Prefix-cache hit rate is not the test.
+- **Workers by labels, then fit:** route model and effort via [`harness.md`](../../../docs/harness.md#policy-any-agent) and [`models.md`](../../../docs/harness/models.md) among available providers (Claude-only in Claude Code; `orchestrator_capabilities` in T3; configured Orca agents), stepping up on evidence.
+  Without a single tier: dsh first (if available) for clear specs, `medium` otherwise, `heavy` for research, design, diagnosis and planning (prefix-cache hit rate is not the test).
 - **About two at once:** pair two writers only when their `area:` sets are non-empty and disjoint ([`loop-and-bounds.md`](loop-and-bounds.md#implementing-an-issue-and-bounding-rounds)), each writer in its own worktree; a read-only planner has no file conflict with a writer on another issue, and a dependent item waits for or stacks on its parent.
   Never use `/swarm`.
-- **Reviews:** the Sonnet [`reviewer`](../../../.claude/agents/reviewer.md) agent.
-  First review of a Sonnet-, dsh- or Haiku-`medium`-built PR goes to Opus or Antigravity: a general-purpose subagent with `model: opus` and `Opus` as `<Reviewer>`, not a `reviewer` override; the `light` review and escalation: [`harness.md`](../../../docs/harness.md#policy-any-agent).
-  Re-reviews prefer Antigravity when Gemini quota allows, covering changes since the last review; a wording-only fix gets none, except on a rule 5 PR ([`pr-and-filing.md`](pr-and-filing.md) step 2).
+- **Reviews:** [`reviewer`](../../../.claude/agents/reviewer.md) (`Sonnet`) by default.
+  First review of a `medium`- or dsh-built PR uses an available `heavy` model from [`models.md`](../../../docs/harness/models.md) (`Opus` subagent, not a `reviewer` override, or Antigravity / Codex); `light` and escalation per [`harness.md`](../../../docs/harness.md#policy-any-agent).
+  Re-reviews prefer Antigravity when quota allows, covering changes since the last review; wording-only fixes skip re-review outside rule 5 PRs ([`pr-and-filing.md`](pr-and-filing.md) step 2).
 - **Cloud:** subagents for planning, reviews and edits, at most about two Rust builds at once ([`cloud-sessions.md`](../../../docs/cloud-sessions.md#container-limits)); child sessions (`create_session`) for builds and renders, briefed per [`worker-brief.md`](worker-brief.md#child-session-brief).
   Give each writer `isolation: "worktree"`; if that fails, run one at a time.
   Never stack: start a dependent item once its parent merges.

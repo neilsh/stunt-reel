@@ -7,7 +7,7 @@ The run is one **coordinator** and its **workers**; the coordinator runs longest
 
 | | Coordinator | Worker (planner, implementer or reviewer) |
 |---|---|---|
-| Model | Current session's model | By labels, then fit ([`SKILL.md`](SKILL.md#concurrency-and-models)) |
+| Model | Current session's model | By labels, then fit, using [`models.md`](../../../docs/harness/models.md) for available providers ([`SKILL.md`](SKILL.md#concurrency-and-models)) |
 | Does | Builds the queue, claims, dispatches, checks the merge bar, arms, files an issue for a reviewer's out-of-scope finding, appends to `run-state.md`; at a claim release, on a worker's report or a reviewer's finding, moves `model-tier:` up one (a swap) when the worker lacked capability, or adds `model-context:wide` when it ran out of context, and says so in its `Released claim:` comment | Reads the issue or PR and its comments; a planner investigates read-only and posts a `## Tentative plan` comment (updating missing `area:`/`type:` labels and naming and applying the `model-tier:` and any `model-context:` labels, without touching `priority:`), while an implementer or reviewer works in its own worktree and files follow-up issues |
 | Reads | `mise run queue` lines, worker reports, the first line of a review comment, the reviewer's reply (its `alternatives: N` and `apply: M` included), CI state, the lines `mise run pr-threads` prints, a PR's changed file names | The bodies, diffs and code the coordinator does not |
 | Never | Opens a diff, an issue body, a thread's text or a session transcript; writes no code and no PR or doc content; `sleep`s or polls; loads `--help` or the orchestration guide | Arms or merges |

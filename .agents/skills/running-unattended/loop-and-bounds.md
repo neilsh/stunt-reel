@@ -69,7 +69,7 @@ The worker does steps 2 to 4, filing its follow-up issues; the coordinator does 
 
 ## Planning an issue (`status:needs-plan`)
 
-A `plan` line in `mise run queue` goes to a planner (Opus or frontier, briefed from [`worker-brief.md`](worker-brief.md#planner-brief)).
+A `plan` line in `mise run queue` goes to a planner (an available `heavy` model from [`models.md`](../../../docs/harness/models.md), briefed from [`worker-brief.md`](worker-brief.md#planner-brief)).
 The coordinator does step 1 and any claim release (`Released claim: <why>.`, swapping `status:in-progress` back to `status:needs-plan`, plus `env:local-only` when a cloud planner hits a `local-windows` resource) if the planner stops without posting a plan; the planner does steps 2 to 4:
 
 1. **Claim it** before investigating: swap `status:needs-plan` for `status:in-progress`, comment `Claimed by planner <id>.`, and verify yours is earliest using step 1's claim check above.
