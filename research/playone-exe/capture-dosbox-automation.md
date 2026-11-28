@@ -165,10 +165,11 @@ _Source: [torn pages](../../work/2026-11/distill-capture-dosbox-automation/journ
   The AVI is `zmbv` decoded as `bgr0`, not `pal8`.
   _Source: [where tears fall, and debugmsg as a sink](../../work/2026-11/1211_torn-video/journal.md#2026-11-27-where-tears-fall-and-debugmsg-as-a-sink)._
 * **A per-frame stream of the composed buffers matched every pinned `CTRY.FLM` page** (`[Bounded Observation]`, one run, Patch 3, `?debug=true`): both buffers' rows 0..191 through `dosbox.debugmsg`, 1,907 frames, 469 MB of hex.
-  Each of the 121 pages equals a streamed buffer at the page's own frame (119 the second word, 2 the first), against 31 exact in the video, and the working palette at that frame equals the page's on 121 of 121.
-  `A000` equals the second word on 1,786 frames, the first on 31, both on 5 and neither on 85 (the torn frames).
+  Each of the 121 pages equals a streamed buffer at the page's own frame (119 the second word, 2 the first), and the working palette at that frame equals the page's on 121 of 121; the video is exact on 31 of the 121.
+  That match holds by construction (the harness keeps a page only when `A000` equals a composed buffer), so it shows the stream is read at the right frame and replays, and that a whole picture is there on the 90 pages where the video is torn; it does not show the stream whole on frames the harness skips.
+  `A000` equals the second word on 1,786 frames, the first on 31, both on 5 and neither buffer on 85 (a superset of the torn frames; the band test was not run).
   The stream does not change `capture.avi` or `meta.json` and replays (two runs, equal payloads).
-  It cost about 71 more Lua instructions a frame, about 137 with boot, so about 7,300 frames a script.
+  It cost about 71 more Lua instructions a frame (estimate from a spin counter, one run each); with the row's own cost that leaves between about 7,300 and 12,300 frames a script, depending on how much of the 126,000 instructions the stream-off run used is boot.
   Not measured: which word is the newest finished picture on every frame, and any film but `CTRY`.
   _Source: [streaming the composed buffers of CTRY through debugmsg](../../work/2026-11/1211_torn-video/journal.md#2026-11-27-streaming-the-composed-buffers-of-ctry-through-debugmsg)._
 * **ADR 0057's rule on run ends** (`[Bounded Observation]`, last frame of each `slot_clock` run, lavapipe renders): pairing by `render_tick` scores above the tag on `INTRO`, `BOMB`, `TRAINTNL` and `LOCATION` (+0.0054 to +0.0127 mean SSIM) and below it on `CTRY`, `LAND` and `BALLOON` (-0.0005 to -0.0014).
