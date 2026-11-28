@@ -22,7 +22,6 @@ from stunt_reel.tac import automation, luagen, playone, video
 from stunt_reel.tac.automation import MockAutomation
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
 
 pytestmark = pytest.mark.windows
@@ -286,6 +285,15 @@ def test_record_video_refuses_malformed_avi_without_metadata(tmp_path: Path) -> 
     assert not (tmp_path / "out" / "meta.json").exists()
 
 
+def test_a_stream_log_may_carry_emulator_lines_after_the_trailer(
+    tmp_path: Path, logs_dir: Path
+) -> None:
+    log = _stream_log("AAA", 3) + b"[F:00009 T:00:00:01.000] script completed: ok\n"
+    (logs_dir / "lua-debug-1-a.log").write_bytes(log)
+
+    video._file_stream("AAA", tmp_path / "stream.log", rows=3)
+
+
 @pytest.mark.parametrize(
     ("log", "message"),
     [
@@ -334,190 +342,144 @@ def test_decode_video_log_raises_only_video_capture_error(output: dict[str, obje
         video.decode_video_log(output)
 
 
-def _stream_lines(token: str, *, end: str = "hold") -> list[str]:
-    """A synthetic stream: header, one composed and one held frame, trailer."""
-    return [f"h{token}:unpatched:1", "p101:00ff", "t102", f"e{end}"]
+def test_video_script_without_a_token_logs_no_pictures() -> None:
+    text = _script()
+
+    assert "debugmsg" not in text
 
 
-def _write_log(log_dir: Path, name: str, payloads: list[str]) -> None:
-    body = "".join(f"[F:{n} T:0.5] debugmsg: {p}\n" for n, p in enumerate(payloads))
-    (log_dir / name).write_text(body, encoding="utf-8")
+def test_the_stream_header_is_the_scripts_first_statement() -> None:
+    text = _script(stream_token="ab12")  # noqa: S106 - a log token, not a secret
+
+    assert text.startswith('dosbox.debugmsg("hab12:')
 
 
-def _record_stream(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    logs: Callable[[str], list[tuple[str, list[str]]]],
-    *,
-    fail: bool = False,
-) -> tuple[Path, MockAutomation]:
-    """Run record_video(stream=True); *logs* gives the debug logs the emulator would write.
+@pytest.mark.parametrize("layout", [playone.UNPATCHED, playone.PATCH3])
+def test_video_script_with_a_token_logs_one_picture_a_frame(layout: playone.PlayoneLayout) -> None:
+    text = _script(stream_token="ab12", layout=layout)  # noqa: S106 - a log token, not a secret
 
-    With *fail* the script raises ``ScriptError`` after the logs are written.
-    """
-    log_dir = tmp_path / "logs"
-    log_dir.mkdir()
-    monkeypatch.setenv(automation.LOG_DIR_ENV, str(log_dir))
+    page_a, page_b = layout.composed_pages
+    assert f'dosbox.debugmsg("hab12:{layout.name}:1")' in text
+    assert f"dosbox.mem_read_word(DS, 0x{page_a:04X})" in text
+    assert f"dosbox.mem_read_word(DS, 0x{page_b:04X})" in text
+    assert text.count('dosbox.debugmsg("p"') == 1
+    loop = text[text.index("for i = 1") : text.index("dosbox.capture_stop()")]
+    assert 'dosbox.debugmsg("p"' in loop
+    assert text.index('dosbox.debugmsg("hab12') < text.index("for i = 1")
+    assert text.count('dosbox.debugmsg("e" .. out["end"])') == 1
+    assert text.index('dosbox.debugmsg("e"') < text.index("dosbox.capture_stop()")
+
+
+def test_video_script_refuses_a_token_that_is_not_alphanumeric() -> None:
+    with pytest.raises(ValueError, match="alphanumeric"):
+        _script(stream_token='a"b')  # noqa: S106 - a log token, not a secret
+
+
+def _stream_log(token: str, pictures: int, *, end: bool = True, header: bool = True) -> bytes:
+    lines = [f"debugmsg: h{token}:UNPATCHED:1"] if header else []
+    lines += [f"debugmsg: p{n}:1:{'00' * 4}" for n in range(pictures)]
+    if end:
+        lines.append("debugmsg: exhold")
+    return ("\n".join(lines) + "\n").encode()
+
+
+@pytest.fixture
+def logs_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    monkeypatch.setattr(video, "emulator_log_dir", lambda: logs)
+    return logs
+
+
+def test_the_stream_finder_picks_the_log_that_carries_its_token(logs_dir: Path) -> None:
+    (logs_dir / "lua-debug-1-a.log").write_bytes(_stream_log("AAA", 1))
+    (logs_dir / "lua-debug-2-b.log").write_bytes(_stream_log("BBB", 1))
+
+    assert video._find_stream_log("BBB", logs_dir) == logs_dir / "lua-debug-2-b.log"
+
+
+def test_the_stream_finder_refuses_no_log_and_two_logs(logs_dir: Path) -> None:
+    (logs_dir / "lua-debug-1-a.log").write_bytes(_stream_log("AAA", 1))
+    (logs_dir / "lua-debug-2-b.log").write_bytes(_stream_log("AAA", 1))
+
+    with pytest.raises(video.VideoCaptureError, match="found 2"):
+        video._find_stream_log("AAA", logs_dir)
+    with pytest.raises(video.VideoCaptureError, match="found no"):
+        video._find_stream_log("ZZZ", logs_dir)
+
+
+def test_a_stream_log_is_moved_when_its_pictures_and_trailer_match(
+    tmp_path: Path, logs_dir: Path
+) -> None:
+    source = logs_dir / "lua-debug-1-a.log"
+    source.write_bytes(_stream_log("AAA", 3))
+    dest = tmp_path / "out" / "stream.log"
+    dest.parent.mkdir()
+
+    video._file_stream("AAA", dest, rows=3)
+
+    assert dest.read_bytes() == _stream_log("AAA", 3)
+    assert not source.exists()
+
+
+@pytest.mark.parametrize(
+    ("log", "message"),
+    [
+        (_stream_log("AAA", 2), "2 pictures but the log has 3 rows"),
+        (_stream_log("AAA", 3, end=False), "end trailer"),
+        (
+            _stream_log("AAA", 3, end=False) + b"debugmsg: exhold\ndebugmsg: p3:1:00\n",
+            "end trailer",
+        ),
+    ],
+)
+def test_a_stream_log_that_does_not_match_is_refused(
+    tmp_path: Path, logs_dir: Path, log: bytes, message: str
+) -> None:
+    (logs_dir / "lua-debug-1-a.log").write_bytes(log)
+    dest = tmp_path / "stream.log"
+
+    with pytest.raises(video.VideoCaptureError, match=message):
+        video._file_stream("AAA", dest, rows=3)
+
+
+class _StreamRunner:
+    """A runner that writes the emulator's debug log for the script's token, as dosbox would."""
+
+    def __init__(self, logs: Path, output: dict[str, object]) -> None:
+        self._logs = logs
+        self._output = output
+        self.debug: list[bool] = []
+
+    def run_script(self, text: str, *, timeout: float, debug: bool = False) -> dict[str, object]:  # noqa: ARG002
+        self.debug.append(debug)
+        token = re.search(r'debugmsg\("h([A-Za-z0-9]+):', text)
+        assert token is not None
+        if debug:
+            (self._logs / "lua-debug-9-run.log").write_bytes(_stream_log(token[1], 3))
+        return self._output
+
+
+def test_record_video_with_a_stream_runs_in_debug_and_files_the_log(
+    tmp_path: Path, logs_dir: Path
+) -> None:
     out_dir, recording = tmp_path / "out", tmp_path / "recording"
     recording.mkdir()
+    (recording / "capture-0001.avi").write_bytes(build_avi([bytes([n]) * 3 for n in range(3)], []))
+    runner = _StreamRunner(logs_dir, _output())
 
-    def handler(lua: str) -> dict[str, Any]:
-        token = re.search(r'debugmsg\("h([0-9a-f]+):', lua)
-        assert token is not None
-        for name, payloads in logs(token.group(1)):
-            _write_log(log_dir, name, payloads)
-        if fail:
-            raise automation.ScriptError("the script died")
-        frames = [bytes([n]) * 3 for n in range(3)]
-        (recording / "capture-0001.avi").write_bytes(build_avi(frames, []))
-        return _output()
-
-    mock = MockAutomation(handler)
     video.record_video(
-        lambda: nullcontext(mock),
+        lambda: nullcontext(runner),
         out_dir,
         recording,
         keys=KEYS,
         layout=playone.UNPATCHED,
         film=FILM,
         provenance={},
-        stream=True,
-    )
-    return out_dir, mock
-
-
-def test_record_video_stream_moves_the_debug_log_to_stream_log(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    tokens: list[str] = []
-
-    def log(token: str) -> list[tuple[str, list[str]]]:
-        tokens.append(token)
-        return [("lua-debug-20261128-010203-x.log", _stream_lines(token))]
-
-    out_dir, mock = _record_stream(tmp_path, monkeypatch, log)
-
-    assert mock.debug_flags == [True]
-    assert (out_dir / video.STREAM_FILE).read_text(encoding="utf-8") == "".join(
-        f"[F:{n} T:0.5] debugmsg: {p}\n" for n, p in enumerate(_stream_lines(tokens[0]))
-    )
-    assert not list((tmp_path / "logs").glob("*.log"))
-    assert (out_dir / VIDEO_FILE).exists()
-
-
-def test_a_stream_with_no_header_log_is_refused(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    with pytest.raises(video.VideoCaptureError, match="found 0"):
-        _record_stream(
-            tmp_path,
-            monkeypatch,
-            lambda _token: [("lua-debug-1.log", _stream_lines("0" * 16))],
-        )
-
-
-def test_two_logs_carrying_the_header_are_refused(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    with pytest.raises(video.VideoCaptureError, match="found 2"):
-        _record_stream(
-            tmp_path,
-            monkeypatch,
-            lambda token: [
-                ("lua-debug-1.log", _stream_lines(token)),
-                ("lua-debug-2.log", _stream_lines(token)),
-            ],
-        )
-
-
-def test_a_stream_without_its_trailer_is_refused(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    with pytest.raises(video.VideoCaptureError, match="trailer"):
-        _record_stream(
-            tmp_path,
-            monkeypatch,
-            lambda token: [("lua-debug-1.log", _stream_lines(token)[:-1])],
-        )
-
-
-def test_a_stream_trailer_must_match_the_run_end(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    with pytest.raises(video.VideoCaptureError, match="trailer 'ehold'"):
-        _record_stream(
-            tmp_path,
-            monkeypatch,
-            lambda token: [("lua-debug-1.log", _stream_lines(token, end="capped"))],
-        )
-
-
-def test_a_log_with_another_token_is_left_alone(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    out_dir, _mock = _record_stream(
-        tmp_path,
-        monkeypatch,
-        lambda token: [
-            ("lua-debug-1.log", _stream_lines("0" * 16)),
-            ("lua-debug-2.log", _stream_lines(token)),
-        ],
+        stream_to=out_dir / "stream.log",
     )
 
-    assert (out_dir / video.STREAM_FILE).exists()
-    assert [p.name for p in (tmp_path / "logs").glob("*.log")] == ["lua-debug-1.log"]
-
-
-def test_a_failed_stream_run_still_moves_its_log_out_of_the_config_dir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    with pytest.raises(automation.ScriptError):
-        _record_stream(
-            tmp_path,
-            monkeypatch,
-            lambda token: [("lua-debug-1.log", _stream_lines(token)[:2])],
-            fail=True,
-        )
-
-    assert (tmp_path / "out" / video.STREAM_FILE).exists()
-    assert not list((tmp_path / "logs").glob("*.log"))
-
-
-def test_a_run_without_stream_loads_without_debug(tmp_path: Path) -> None:
-    recording = tmp_path / "recording"
-    recording.mkdir()
-
-    def handler(_lua: str) -> dict[str, Any]:
-        frames = [bytes([n]) * 3 for n in range(3)]
-        (recording / "capture-0001.avi").write_bytes(build_avi(frames, []))
-        return _output()
-
-    mock = MockAutomation(handler)
-    video.record_video(
-        lambda: nullcontext(mock),
-        tmp_path / "out",
-        recording,
-        keys=KEYS,
-        layout=playone.UNPATCHED,
-        film=FILM,
-        provenance={},
-    )
-
-    assert mock.debug_flags == [False]
-    assert not (tmp_path / "out" / video.STREAM_FILE).exists()
-
-
-def test_a_failed_move_never_hides_the_runner_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    def refuse(*_args: object) -> None:
-        raise OSError("disk full")
-
-    monkeypatch.setattr("shutil.move", refuse)
-    with pytest.raises(automation.ScriptError):
-        _record_stream(
-            tmp_path,
-            monkeypatch,
-            lambda token: [("lua-debug-1.log", _stream_lines(token)[:2])],
-            fail=True,
-        )
+    assert runner.debug == [True]
+    assert (out_dir / "stream.log").exists()
+    assert not (logs_dir / "lua-debug-9-run.log").exists()
+    assert (out_dir / "meta.json").exists()

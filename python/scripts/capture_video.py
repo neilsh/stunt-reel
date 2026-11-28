@@ -4,8 +4,6 @@ Stages the film and its .ALL under the data root, launches dosbox-automation on 
 web-server port with the stage's recording directory as its capture directory, and runs one Lua
 script: boot, ``dosbox.capture_start()``, then a per-frame log of the film clock, the global tick
 and palette writes until the film holds its last picture. The audio is stripped from the AVI.
-With ``--stream`` the script also streams each frame's composed picture through ``debugmsg``
-into ``stream.log`` beside the AVI, for the decoder that repairs the video's tears.
 
 The result becomes the film's one video capture, ``captures-video/<film>/`` (gitignored, shared
 through the data root): a successful recording is written beside the old one and swapped in
@@ -27,6 +25,8 @@ from stunt_reel.tac import automation, video
 
 #: Beside the stage's mount, so ``unstage`` deletes the raw (audio-carrying) recording.
 RECORDING_DIR = "recording"
+#: Beside capture.avi in the output directory: one composed picture per recorded frame.
+STREAM_FILE = "stream.log"
 
 
 def parse_args() -> argparse.Namespace:
@@ -81,14 +81,16 @@ def parse_args() -> argparse.Namespace:
         "--stream",
         action="store_true",
         help=(
-            "also stream each frame's composed picture into stream.log through debugmsg, whole "
-            "pictures where the AVI tears; a held frame is marked t<frame> (default off)"
+            "record each frame's composed picture through debugmsg to stream.log beside "
+            "capture.avi, about 235 MB per 1,900 frames (needs --out)"
         ),
     )
     capture_run.add_sound_samples_option(parser)
     args = parser.parse_args()
     if args.max_frames < 1:
         parser.error("--max-frames must be at least 1")
+    if args.stream and args.out is None:
+        parser.error("--stream needs --out: the stream log is written beside the capture")
     if args.out is None and args.max_frames != video.VIDEO_MAX_FRAMES:
         parser.error(
             "a non-default --max-frames needs --out: only default parameters fill the store (ADR 0028)"
@@ -117,7 +119,7 @@ def plan_video(args: argparse.Namespace) -> capture_run.Plan:
             provenance=attempt.provenance,
             cap=args.max_frames,
             emulator=video.emulator_info(),
-            stream=args.stream,
+            stream_to=attempt.out / STREAM_FILE if args.stream else None,
         )
         return (
             f"recorded {len(recorded.log.frame)} frames ({recorded.end}), film starts at frame "

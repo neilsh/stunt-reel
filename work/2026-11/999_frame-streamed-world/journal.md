@@ -69,3 +69,24 @@
   Not timed: stage C owns the loop gate.
 - **Lives in**: this entry; `lavapipe-render-time.md` § 6 is written by stage C.
 
+
+## 2026-11-28 Stage B: Windows lavapipe and RTX 4070 stores and memory
+
+- **Question**: do the stores match, and what does the stream do to peak memory, on the Legion's Windows lavapipe (mesa-dist-win 25.2.8) and RTX 4070 (#1092's remaining item)?
+- **Built**: the release `stuntreel.exe` at main `287fc28a` (#1215), the machine idle (about 2 % CPU) and the loop not timed.
+- **How**: [`stream_store_check.py`](stream_store_check.py) and [`stream_memory_check.py`](stream_memory_check.py) with `--adapter lavapipe --adapter gpu`, run through a one-off wrapper that skips the reference capture's pinned-hash check.
+  The wrapper was needed because four local captures (`ctry`, `land`, `bomb`, `location`) pre-date the pins #1165 moved and `cloud-assets fetch` has no credentials here; `ctry` was recaptured locally (hash differs from the pin) and the other three are the older captures.
+  Both variants of a pair read the same capture with the same binary, so the pair compares like with like; the stores are not compared to the pinned capture.
+- **Result**:
+  - Stores, [`stream-stores-win.csv`](stream-stores-win.csv): off and on are identical in all four planes on the seven films, on both adapters (14 of 14 pairs).
+  - Peak memory, [`stream-memory-win.csv`](stream-memory-win.csv), MiB of resident memory, three runs each:
+
+    | Adapter | Variant | Renderer opened | Frames rendered | Peak |
+    |---|---|---|---|---|
+    | lavapipe | off | 868.3 to 869.0 | 675.8 to 676.0 | 1020.9 to 1021.5 |
+    | lavapipe | on | 740.3 to 741.3 | 469.9 to 471.2 | 740.8 to 741.9 |
+    | RTX 4070 | off | 531.0 to 531.3 | 245.4 to 245.6 | 825.1 to 825.3 |
+    | RTX 4070 | on | 814.4 to 815.3 | 529.8 to 530.0 | 814.4 to 815.3 |
+
+    The peak is lower by about `280` MiB on lavapipe and by about `11` MiB on the RTX 4070, where the stream's host-side copy of the mesh raises the resident set after the renderer opens by about `283` MiB; the stages' peaks (`825` off, `815` on) are not explained by the four stage readings, which this run did not look into.
+- **Verdict**: stores identical on all seven films on Windows lavapipe and the RTX 4070; peak memory lower on both, in three of three pairs; `[Bounded Observation]`, one machine, one day, the reference captures not at their pins.

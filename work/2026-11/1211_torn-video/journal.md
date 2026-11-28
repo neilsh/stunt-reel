@@ -61,20 +61,37 @@ The instruction cost is high enough that the row should be lightened (one buffer
 
 **Lives in.** `research/playone-exe/capture-dosbox-automation.md` § 4.6.
 
+## 2026-11-28: Step 2, the stream inside capture-video
+
+**Question.** Does `capture-video --stream` (one `debugmsg` line a frame: the buffer `A000` equals, else the second) leave the recording unchanged, keep every pinned `CTRY` page, and cost less than the probe's three lines?
+
+**Method.** Patch 3, stubbed samples, `capture` profile, dosbox-automation 0.85.1; `mise run capture-video -- --film corpus/stisldem/VAULT/CTRY.FLM --game-root <data root>/builds/patch3 --out <dir> --stream`, built by a Haiku worker and checked here.
+Scratch scripts in the project files folder: `s2_gate.py` (pinned pages against the `p` lines at their frame and one either side) and `s2_spin.py` (the spin counter of the probe, calibrated at 3.01 instructions an iteration).
+
+**Result.**
+
+* 1,907 frames, ends `hold`, 234,901,293-byte `stream.log`, 1,907 `p` lines and the `e` trailer; `capture.avi` sha256 equals the stream-off recording's (`e1e8cd339069...`), and `meta.json` differs only in `captured_on`.
+* Each of the 121 pinned pages equals the logged picture at its own frame (110 at that frame only, 11 also at the next); the flags are 2 on 1,786 frames, 1 on 31, 3 on 5 and 0 on 85, as the probe's.
+* The stream-plus-spin run reached 259,000 spin iterations, the no-stream run (probe) 290,000: about 93,000 more instructions, 49 a frame, about 115 a frame with the stream and boot.
+  One script then holds between about 8,700 frames (the no-stream 126,000 all per-frame) and about 17,800 (all boot); `LOCATION.FLM` (11,616 frames) fits unless about half or more of the no-stream cost is per-frame.
+* The emulator appends `script completed` lines after the trailer, so the check looks for the trailer after the last `p` line, not as the last line (the first attempt failed on that).
+
+**Verdict.** Go on step 3 (decode and encode).
+
+**Lives in.** `research/playone-exe/capture-dosbox-automation.md` § 4.6.
+
 ## 2026-11-28: The front rule on frames where A000 equals neither buffer
 
-**Question.** Which composed buffer holds the newest finished picture on frames where `A000` equals neither, so `capture-video` can stream a whole picture every frame? (#1211, Phase B step 2.)
+**Question.** Which composed buffer holds the newest whole picture on frames where `A000` equals neither, so a decoder of `capture-video --stream` knows what to show there? (#1211, step 3 input.)
 
-**Method.** The step 1 probe (`1211-torn-video/b1_probe.py` in the project files folder) rerun on `CTRY.FLM` (Patch 3, stubbed samples, `capture` profile), then a scratch analysis of its log hashing each buffer per frame (`front.py`, not committed).
+**Method.** The step 1 probe (`1211-torn-video/b1_probe.py` in the project files folder) rerun on `CTRY.FLM` (Patch 3, stubbed samples, `capture` profile), then a scratch analysis of its log hashing each buffer per frame (not committed).
 
 **Result.** `[Bounded Observation]`, one run.
 
-* The flags repeat step 1: `A000` equals the second word on 1,786 frames, the first on 31, both on 5, neither on 85; the words swap 696 times.
+* The flags repeat step 1: `A000` equals the second word only on 1,786 frames, the first only on 31, both on 5 and neither on 85; the words swap 696 times.
 * On the 85 frames, neither buffer's picture appears whole in `A000` in the 4 frames before; the second word's appears in the 4 after on 5 of 85, the first word's on none.
-* The second word's buffer changed with no word change on 967 frames, and 107 of its 1,623 distinct pictures never appear whole in `A000`: a buffer can be read mid-compose, so "always stream the second word" could stream pictures never shown whole.
-* The rule adopted: stream `A000` rows 0..191 when they equal either buffer, else mark the frame held, for a decoder to repeat the last streamed picture.
-  `capture-video --stream` (the step 2 build) streamed 1,822 frames and held 85 on a second run, with `capture.avi` byte-identical to a stream-off recording; the log was 224 MB and also carries the emulator's own debug lines (7,594 `mem_read` traces), so a decoder filters on `] debugmsg: `.
+* The second word's buffer changed with no word change on 967 frames, and 107 of its 1,623 distinct pictures never appear whole in `A000`: a buffer can be read mid-compose, so the second buffer logged on a neither frame could be a picture never shown whole.
 
-**Verdict.** Every streamed picture is whole by the harness's own test; held frames are the 85 (4.5%) where `A000` equals neither buffer.
+**Verdict.** Step 3 should treat a `p` line with flags 0 (neither) as held: repeat the last picture with flags 1 to 3, and count the held frames (85 of 1,907, 4.5%, on `CTRY`).
 
 **Lives in.** `research/playone-exe/capture-dosbox-automation.md` § 4.6.

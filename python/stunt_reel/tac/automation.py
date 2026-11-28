@@ -25,23 +25,21 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from stunt_reel.tac.emulator import EmulatorUnavailable, GuestTimeout, LaunchFailed
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
+    from pathlib import Path
 
 __all__ = [
     "EXE_ENV",
-    "LOG_DIR_ENV",
     "AutomationClient",
     "DosboxAutomation",
     "MockAutomation",
     "ScriptError",
     "ScriptRunner",
-    "debug_log_dir",
     "dosbox_executable",
     "emulator_version",
     "free_port",
@@ -52,8 +50,6 @@ __all__ = [
 #: Overrides the executable lookup (otherwise ``dosbox`` on PATH, as mise puts it there).
 EXE_ENV: str = "DOSBOX_AUTOMATION_EXE"
 _EXE_NAME: str = "dosbox"
-#: Overrides where dosbox-automation writes its ``lua-debug-*.log`` files (see :func:`debug_log_dir`).
-LOG_DIR_ENV: str = "STUNT_DOSBOX_LOG_DIR"
 _API = "/api/v1"
 _HTTP_TIMEOUT_SECONDS: float = 120.0
 LAUNCH_TIMEOUT_SECONDS: float = 30.0
@@ -68,29 +64,9 @@ class ScriptError(RuntimeError):
 class ScriptRunner(Protocol):
     """Runs one generated script and returns its ``dosbox.output`` table."""
 
-    def run_script(self, text: str, *, timeout: float, debug: bool = False) -> dict[str, Any]:
-        """Execute *text* and return its output, within *timeout* seconds.
-
-        With *debug* the emulator writes the script's ``dosbox.debugmsg`` calls to its log.
-        """
+    def run_script(self, text: str, *, timeout: float) -> dict[str, Any]:
+        """Execute *text* and return its output, within *timeout* seconds."""
         ...
-
-
-def debug_log_dir(*, platform: str = sys.platform) -> Path:
-    """The directory dosbox-automation writes its ``lua-debug-*.log`` files into.
-
-    On Linux that is ``$XDG_CONFIG_HOME/dosbox-automation/logs`` (``~/.config`` when unset); on
-    Windows ``%LOCALAPPDATA%\\dosbox-automation\\logs`` (unverified there: no Windows host has
-    run it yet). :data:`LOG_DIR_ENV` overrides both. The directory need not exist.
-    """
-    override = os.environ.get(LOG_DIR_ENV)
-    if override:
-        return Path(override)
-    if platform.startswith("win"):
-        local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-        return Path(local) / "dosbox-automation" / "logs"
-    config = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-    return Path(config) / "dosbox-automation" / "logs"
 
 
 def dosbox_executable() -> str:
@@ -191,17 +167,16 @@ class AutomationClient:
         text: str,
         *,
         timeout: float,
-        debug: bool = False,
         poll: float = 2.0,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
+        debug: bool = False,
     ) -> dict[str, Any]:
         """Load and start *text*, poll to completion and return its output table.
 
-        With *debug* the script loads with ``debug=true``, so its ``dosbox.debugmsg`` calls are
-        written to the emulator's log (:func:`debug_log_dir`). Raises ScriptError with the
-        emulator's text when the script fails, and GuestTimeout when it is still running after
-        *timeout* seconds.
+        With *debug* the emulator writes the script's debugmsg calls to its log file.
+        Raises ScriptError with the emulator's text when the script fails, and GuestTimeout
+        when it is still running after *timeout* seconds.
         """
         load = "/script/load?debug=true" if debug else "/script/load"
         self._call("POST", load, text.encode(), "text/plain")
@@ -355,16 +330,8 @@ class MockAutomation:
     def __init__(self, handler: Callable[[str], dict[str, Any]]) -> None:
         self._handler = handler
         self.scripts: list[str] = []
-        self.debug_flags: list[bool] = []
 
-    def run_script(
-        self,
-        text: str,
-        *,
-        timeout: float,  # noqa: ARG002
-        debug: bool = False,
-    ) -> dict[str, Any]:
-        """Record *text* and *debug*, and return what the handler makes of *text*."""
+    def run_script(self, text: str, *, timeout: float) -> dict[str, Any]:  # noqa: ARG002
+        """Record *text* and return what the handler makes of it."""
         self.scripts.append(text)
-        self.debug_flags.append(debug)
         return self._handler(text)

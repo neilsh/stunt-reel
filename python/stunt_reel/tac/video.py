@@ -10,11 +10,12 @@ or a clock word, and every palette value is a 6-bit DAC unit scaled to 8 bits th
 from __future__ import annotations
 
 import hashlib
+import os
 import secrets
 import shutil
-from contextlib import suppress
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from stunt_reel.avi import AviError, video_only
 from stunt_reel.parity_artifacts import (
@@ -39,15 +40,13 @@ from stunt_reel.tac import automation, luagen, plan, staging
 from stunt_reel.tac.framebuffer import END_HOLD_FRAMES
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
     from contextlib import AbstractContextManager
-    from pathlib import Path
 
     from stunt_reel.tac.automation import ScriptRunner
     from stunt_reel.tac.playone import PlayoneLayout
 
 __all__ = [
-    "STREAM_FILE",
     "VIDEO_MAX_FRAMES",
     "VideoCaptureError",
     "VideoLog",
@@ -71,11 +70,24 @@ _BAND_BYTES: int = _BAND_ENTRIES * 3
 FRAME_RATE: tuple[int, int] = (2190197, 31250)
 #: The codec of the emulator's recording.
 VIDEO_CODEC: str = "zmbv"
-#: The per-frame stream of composed pictures a ``stream`` recording leaves beside its AVI.
-STREAM_FILE: str = "stream.log"
-_LOG_GLOB: str = "lua-debug-*.log"
-_DEBUG_SEPARATOR: str = "] debugmsg: "
 EMULATOR_NAME: str = "dosbox-automation"
+#: Bytes of an emulator debug log searched for the stream's header line.
+_LOG_HEAD_BYTES: int = 4096
+
+
+class StreamScriptRunner(Protocol):
+    """A script runner that can send the script's debugmsg calls to the emulator's log file."""
+
+    def run_script(self, text: str, *, timeout: float, debug: bool) -> dict[str, Any]:
+        """Run *text* with debug logging on and return its output table."""
+        ...
+
+
+def emulator_log_dir() -> Path:
+    """The directory where dosbox-automation writes its ``lua-debug-*.log`` files (Linux layout,
+    observed on a cloud session; other platforms are untested)."""
+    config = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
+    return Path(config) / "dosbox-automation" / "logs"
 
 
 class VideoCaptureError(RuntimeError):
@@ -233,45 +245,47 @@ def film_start_frame(log: TickLog) -> int:
     raise FilmClockStuck("the film clock never moved")
 
 
-def _debug_payloads(path: Path) -> Iterator[str]:
-    """The payload of each ``dosbox.debugmsg`` line in a dosbox-automation log, in order."""
-    with path.open(encoding="utf-8", errors="replace") as handle:
-        for line in handle:
-            _, separator, payload = line.partition(_DEBUG_SEPARATOR)
-            if separator:
-                yield payload.rstrip("\r\n")
+def _find_stream_log(token: str, log_dir: Path) -> Path:
+    """The one emulator debug log in *log_dir* whose first bytes carry this run's header line.
 
-
-def _stream_log(token: str, out_dir: Path) -> list[Path]:
-    """Find the debug logs whose first payload is this run's header; move a lone one into *out_dir*.
-
-    The header is the script's first ``debugmsg``, so only each log's first payload is read.
-    Returns every log carrying *token*, the lone one already moved to ``out_dir / stream.log``,
-    replacing any file there. Filesystem errors propagate as ``OSError``.
+    Raises ``VideoCaptureError`` if none or several do (runs may share the directory).
     """
-    header = f"h{token}:"
-    found: list[Path] = []
-    for path in sorted(automation.debug_log_dir().glob(_LOG_GLOB)):
-        first = next(_debug_payloads(path), None)
-        if first is not None and first.startswith(header):
-            found.append(path)
-    if len(found) != 1:
-        return found
-    out_dir.mkdir(parents=True, exist_ok=True)
-    target = out_dir / STREAM_FILE
-    target.unlink(missing_ok=True)
-    shutil.move(found[0], target)
-    return [target]
-
-
-def _check_stream_trailer(path: Path, end: str) -> None:
-    """Refuse a stream whose last payload is not the trailer for the run's *end*."""
-    last = ""
-    for payload in _debug_payloads(path):
-        last = payload
-    if last != f"e{end}":
+    header = f"debugmsg: h{token}:".encode()
+    matches = []
+    for path in sorted(log_dir.glob("lua-debug-*.log")):
+        with path.open("rb") as handle:
+            if header in handle.read(_LOG_HEAD_BYTES):
+                matches.append(path)
+    if len(matches) != 1:
+        found = f"{len(matches)}" if matches else "no"
         raise VideoCaptureError(
-            f"the stream {path} ends with {last[:16]!r}, not the trailer 'e{end}'"
+            f"expected one emulator log for this run in {log_dir}, found {found}"
+        )
+    return matches[0]
+
+
+def _file_stream(token: str, stream_to: Path, rows: int) -> None:
+    """Move this run's emulator log to *stream_to* and check it holds one picture per row.
+
+    The log must hold an ``e`` trailer after its last ``p`` line (the emulator adds its own lines after it) and hold exactly *rows* ``p`` lines. It is read a
+    line at a time: it runs to hundreds of megabytes.
+    """
+    source = _find_stream_log(token, emulator_log_dir())
+    shutil.move(source, stream_to)
+    pictures = 0
+    closed = False
+    with stream_to.open("rb") as handle:
+        for line in handle:
+            if b"debugmsg: p" in line:
+                pictures += 1
+                closed = False
+            elif b"debugmsg: e" in line:
+                closed = True
+    if not closed:
+        raise VideoCaptureError(f"the stream log {stream_to} lacks its end trailer")
+    if pictures != rows:
+        raise VideoCaptureError(
+            f"the stream log holds {pictures} pictures but the log has {rows} rows"
         )
 
 
@@ -286,7 +300,7 @@ def record_video(
     provenance: Mapping[str, str],
     cap: int = VIDEO_MAX_FRAMES,
     emulator: EmulatorInfo | None = None,
-    stream: bool = False,
+    stream_to: Path | None = None,
 ) -> VideoCapture:
     """Run the recording script, then file its AVI and log into *out_dir*.
 
@@ -294,48 +308,28 @@ def record_video(
     after the runner closes. Its audio is stripped into ``out_dir / capture.avi``, whose frame
     count must match the log's rows to within one, and ``meta.json`` is written last, recording
     the AVI's hash, the layout read, the film ticks and *emulator* when given. A failure can
-    leave the stripped AVI in *out_dir*.
+    leave the stripped AVI, and with *stream_to* the moved ``stream.log``, in *out_dir*, and a
+    failed run leaves the emulator's debug log in its log directory.
 
-    With *stream* the script also streams the composed pictures through ``debugmsg``; the run's
-    debug log, found by a random header token, is moved to ``out_dir / stream.log`` (not decoded
-    here) as soon as the emulator closes, also when the run fails, so a failure can leave it
-    there too.
+    With *stream_to* each frame's composed picture is also logged by debugmsg; the emulator's
+    log of that run is moved there and checked (see :func:`_file_stream`).
 
     Raises ``VideoCaptureError`` for an unusable recording: no or several ``.avi``, an AVI
     parsing error, a frame-count mismatch, a log the capture document refuses (frames that
-    skip, a film clock that falls), no or several debug logs carrying the stream header or one
-    without its trailer, or a failed ``meta.json`` write. Runner and other filesystem errors
-    propagate; a failure to move the log never hides a runner error.
+    skip, a film clock that falls), a stream log that is missing or does not match, or a failed
+    ``meta.json`` write. Runner and other filesystem errors propagate.
     """
-    token = secrets.token_hex(8) if stream else ""
+    token = secrets.token_hex(8) if stream_to is not None else None
     script = luagen.video_script(
-        keys=keys,
-        cap=cap,
-        end_hold=END_HOLD_FRAMES,
-        layout=layout,
-        stream=stream,
-        token=token,
+        keys=keys, cap=cap, end_hold=END_HOLD_FRAMES, layout=layout, stream_token=token
     )
-    try:
-        with open_runner() as runner:
-            if stream:
-                output = runner.run_script(script, timeout=VIDEO_TIMEOUT_SECONDS, debug=True)
-            else:
-                output = runner.run_script(script, timeout=VIDEO_TIMEOUT_SECONDS)
-    except BaseException:
-        if stream:
-            with suppress(OSError):
-                _stream_log(token, out_dir)
-        raise
-    logs = _stream_log(token, out_dir) if stream else []
+    with open_runner() as runner:
+        if stream_to is None:
+            output = runner.run_script(script, timeout=VIDEO_TIMEOUT_SECONDS)
+        else:
+            streaming = cast("StreamScriptRunner", runner)
+            output = streaming.run_script(script, timeout=VIDEO_TIMEOUT_SECONDS, debug=True)
     decoded = decode_video_log(output)
-    if stream:
-        if len(logs) != 1:
-            raise VideoCaptureError(
-                "expected one debug log carrying the stream header in "
-                f"{automation.debug_log_dir()}, found {len(logs)}"
-            )
-        _check_stream_trailer(logs[0], decoded.end)
     recordings = sorted(recording_dir.glob("*.avi"))
     if len(recordings) != 1:
         raise VideoCaptureError(
@@ -343,6 +337,8 @@ def record_video(
             + (f"{len(recordings)}" if recordings else "no .avi")
         )
     out_dir.mkdir(parents=True, exist_ok=True)
+    if stream_to is not None and token is not None:
+        _file_stream(token, stream_to, len(decoded.log.frame))
     try:
         video_frames = video_only(recordings[0], out_dir / VIDEO_FILE)
     except AviError as exc:
