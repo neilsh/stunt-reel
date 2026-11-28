@@ -149,8 +149,6 @@ def test_committed_manifest_names_the_spec_archives() -> None:
 
 
 VIDEO_FILMS = ("balloon", "bomb", "ctry", "intro", "land", "location", "traintnl")
-#: Films whose archive carries a `capture-video --stream` recording (LOCATION does not fit one script).
-STREAM_FILES = {film: ("stream.mkv", "stream.json") for film in VIDEO_FILMS if film != "location"}
 
 
 def test_committed_video_archives_are_on_demand_and_pinned() -> None:
@@ -160,7 +158,7 @@ def test_committed_video_archives_are_on_demand_and_pinned() -> None:
         slug = references.read_reference(REPO_ROOT, film).slug
         assert (a.into, a.include, a.on_demand, a.key) == (
             parity_layout.video_path(slug).as_posix(),
-            ("capture.avi", "meta.json", *STREAM_FILES.get(film, ())),
+            ("capture.avi", "meta.json", "stream.mkv", "stream.json"),
             True,
             a.key,
         )

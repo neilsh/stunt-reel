@@ -102,9 +102,9 @@ bytes = 18931652
 
 [captures-video-location]
 into = "captures-video/vault-location"
-include = ["capture.avi", "meta.json"]
+include = ["capture.avi", "meta.json", "stream.mkv", "stream.json"]
 exclude = []
 on_demand = true
-key = "v2/captures-video-location-110d510a5a3e1510.tar.zst"
-sha256 = "110d510a5a3e151066774433b5697210974265b1ed005eb15f5f1b59ab0bdad3"
-bytes = 19620481
+key = "v2/captures-video-location-c7ad6c77739d2165.tar.zst"
+sha256 = "c7ad6c77739d2165128fc4de61c52e5622bdae02b1527665fd192b7a9e464691"
+bytes = 61776522
