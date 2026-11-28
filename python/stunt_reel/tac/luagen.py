@@ -400,6 +400,8 @@ def video_script(
     cap: int,
     end_hold: int,
     layout: PlayoneLayout,
+    stream: bool = False,
+    token: str = "",
 ) -> str:
     """The Lua for a video capture: boot with *keys*, record the screen, log clocks and palette.
 
@@ -410,13 +412,39 @@ def video_script(
     ``pal0`` (the palette then), ``log``, ``pal`` and ``end`` (``hold`` or ``capped``), each
     string behind an ``x`` so it stays a string. Raises ValueError if *cap* or *end_hold* is
     below 1.
+
+    With *stream* the script also writes, through ``dosbox.debugmsg``, a header
+    ``h<token>:<layout name>:1`` (*token* is lowercase hex and required), then per frame either
+    ``p<frame>:<hex of A000 rows 0..191>`` when those rows equal one composed page, or
+    ``t<frame>`` when they equal neither, and a trailer ``e<end>``. Nothing is written to the
+    outputs for the stream; it is the whole picture per frame that the AVI cannot give, since
+    the video samples A000 while the game copies a composed page into it.
     """
     if cap < 1:
         raise ValueError(f"cap must be at least 1, got {cap}")
     if end_hold < 1:
         raise ValueError(f"end_hold must be at least 1, got {end_hold}")
+    if stream and not re.fullmatch(r"[0-9a-f]+", token):
+        raise ValueError(f"a stream needs a lowercase hex token, got {token!r}")
     palette_read = f"dosbox.mem_read(DS, 0x{layout.working_palette:X}, {_PALETTE_BYTES})"
     band = _PALETTE_BYTES // PALETTE_BANDS
+    header = ""
+    stream_block = ""
+    trailer = ""
+    if stream:
+        page_a, page_b = layout.composed_pages
+        header = f'dosbox.debugmsg("h{token}:{layout.name}:1")\nlocal ROWS = {_COMPOSED_BYTES}\n'
+        stream_block = (
+            f"  local sa, sb = dosbox.mem_read_word(DS, 0x{page_a:04X}), "
+            f"dosbox.mem_read_word(DS, 0x{page_b:04X})\n"
+            "  local top = dosbox.mem_read(0xA000, 0, ROWS)\n"
+            "  if top == dosbox.mem_read(sa, 0, ROWS) or top == dosbox.mem_read(sb, 0, ROWS) then\n"
+            '    dosbox.debugmsg("p" .. f .. ":" .. (top:gsub(".", H)))\n'
+            "  else\n"
+            '    dosbox.debugmsg("t" .. f)\n'
+            "  end\n"
+        )
+        trailer = 'dosbox.debugmsg("e" .. out["end"]:sub(2))\n'
     return (
         f"local DS = 0x{layout.ds:04X}\n"
         "local out = dosbox.output\n"
@@ -428,11 +456,11 @@ def video_script(
         'out.cs = "x" .. dosbox.frame()\n'
         f'out.pal0 = "x" .. {palette_read}:gsub(".", H)\n'
         f"local tr, pl, lt, hold, ppal = {{}}, {{}}, -1, 0, {palette_read}\n"
-        'out["end"] = "xcapped"\n'
-        f"for i = 1, {cap} do\n"
+        'out["end"] = "xcapped"\n' + header + f"for i = 1, {cap} do\n"
         "  dosbox.wait_frames(1)\n"
         "  local f = dosbox.frame()\n"
-        f"  local t = dosbox.mem_read_word(DS, 0x{layout.film_clock:04X}); "
+        + stream_block
+        + f"  local t = dosbox.mem_read_word(DS, 0x{layout.film_clock:04X}); "
         f"local g = dosbox.mem_read_word(DS, 0x{layout.global_tick:04X})\n"
         f"  local sc = dosbox.mem_read_word(DS, 0x{layout.slot_clock:04X}); "
         f"local st = dosbox.mem_read_word(DS, 0x{layout.slot_ticks:04X})\n"
@@ -448,8 +476,7 @@ def video_script(
         "  end\n"
         "  if t == lt then hold = hold + 1 else hold = 0; lt = t end\n"
         f'  if t > 0 and hold >= {end_hold} then out["end"] = "xhold"; break end\n'
-        "end\n"
-        "dosbox.capture_stop()\n"
+        "end\n" + trailer + "dosbox.capture_stop()\n"
         'out.log = "x" .. table.concat(tr, ",")\n'
         'out.pal = "x" .. table.concat(pl, ",")\n'
         "out.done = true\n"

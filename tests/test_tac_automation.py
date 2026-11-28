@@ -306,3 +306,63 @@ def test_a_driver_already_set_wins_over_the_headless_default() -> None:
     env = automation.headless_env({"SDL_VIDEODRIVER": "x11"}, platform="linux")
     assert env["SDL_VIDEODRIVER"] == "x11"
     assert env["SDL_AUDIODRIVER"] == "dummy"
+
+
+def test_run_script_with_debug_loads_with_the_debug_flag(fake: Fake) -> None:
+    _client(fake).run_script("print(1)", timeout=60, debug=True, poll=0, sleep=lambda _s: None)
+
+    load = next(r for r in fake.requests if r[1].startswith("/api/v1/script/load"))
+    assert (load[0], load[1], load[3]) == ("POST", "/api/v1/script/load?debug=true", b"print(1)")
+
+
+def test_run_script_without_debug_loads_without_the_flag(fake: Fake) -> None:
+    _client(fake).run_script("print(1)", timeout=60, poll=0, sleep=lambda _s: None)
+
+    load = next(r for r in fake.requests if r[1].startswith("/api/v1/script/load"))
+    assert load[1] == "/api/v1/script/load"
+
+
+def test_debug_log_dir_follows_the_xdg_config_home_on_linux(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv(automation.LOG_DIR_ENV, raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+
+    assert automation.debug_log_dir(platform="linux") == tmp_path / "dosbox-automation" / "logs"
+
+
+def test_debug_log_dir_defaults_to_dot_config_home_on_linux(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv(automation.LOG_DIR_ENV, raising=False)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    assert automation.debug_log_dir(platform="linux") == (
+        tmp_path / ".config" / "dosbox-automation" / "logs"
+    )
+
+
+def test_debug_log_dir_uses_localappdata_on_windows(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv(automation.LOG_DIR_ENV, raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+
+    assert automation.debug_log_dir(platform="win32") == tmp_path / "dosbox-automation" / "logs"
+
+
+def test_the_log_dir_override_wins(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv(automation.LOG_DIR_ENV, str(tmp_path / "logs"))
+
+    assert automation.debug_log_dir(platform="linux") == tmp_path / "logs"
+    assert automation.debug_log_dir(platform="win32") == tmp_path / "logs"
+
+
+def test_mock_automation_records_the_debug_flag() -> None:
+    mock = automation.MockAutomation(lambda _text: {"done": True})
+
+    mock.run_script("a", timeout=1)
+    mock.run_script("b", timeout=1, debug=True)
+
+    assert mock.debug_flags == [False, True]

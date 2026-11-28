@@ -10,6 +10,8 @@ or a clock word, and every palette value is a 6-bit DAC unit scaled to 8 bits th
 from __future__ import annotations
 
 import hashlib
+import secrets
+import shutil
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -36,7 +38,7 @@ from stunt_reel.tac import automation, luagen, plan, staging
 from stunt_reel.tac.framebuffer import END_HOLD_FRAMES
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Iterator, Mapping, Sequence
     from contextlib import AbstractContextManager
     from pathlib import Path
 
@@ -44,6 +46,7 @@ if TYPE_CHECKING:
     from stunt_reel.tac.playone import PlayoneLayout
 
 __all__ = [
+    "STREAM_FILE",
     "VIDEO_MAX_FRAMES",
     "VideoCaptureError",
     "VideoLog",
@@ -67,6 +70,10 @@ _BAND_BYTES: int = _BAND_ENTRIES * 3
 FRAME_RATE: tuple[int, int] = (2190197, 31250)
 #: The codec of the emulator's recording.
 VIDEO_CODEC: str = "zmbv"
+#: The per-frame stream of composed pictures a ``stream`` recording leaves beside its AVI.
+STREAM_FILE: str = "stream.log"
+_LOG_GLOB: str = "lua-debug-*.log"
+_DEBUG_SEPARATOR: str = "] debugmsg: "
 EMULATOR_NAME: str = "dosbox-automation"
 
 
@@ -225,6 +232,50 @@ def film_start_frame(log: TickLog) -> int:
     raise FilmClockStuck("the film clock never moved")
 
 
+def _debug_payloads(path: Path) -> Iterator[str]:
+    """The payload of each ``dosbox.debugmsg`` line in a dosbox-automation log, in order."""
+    with path.open(encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            _, separator, payload = line.partition(_DEBUG_SEPARATOR)
+            if separator:
+                yield payload.rstrip("\r\n")
+
+
+def _stream_log(token: str, out_dir: Path) -> Path:
+    """Move the one debug log whose first payload is this run's header into *out_dir*.
+
+    The header is the script's first ``debugmsg``, so only each log's first payload is read.
+    Raises ``VideoCaptureError`` when no log or several carry *token*, or when the log's last
+    payload is not the trailer ``e<end>`` the caller checks after the move.
+    """
+    header = f"h{token}:"
+    found: list[Path] = []
+    for path in sorted(automation.debug_log_dir().glob(_LOG_GLOB)):
+        first = next(_debug_payloads(path), None)
+        if first is not None and first.startswith(header):
+            found.append(path)
+    if len(found) != 1:
+        raise VideoCaptureError(
+            f"expected one debug log carrying the stream header in {automation.debug_log_dir()}, "
+            f"found {len(found)}"
+        )
+    out_dir.mkdir(parents=True, exist_ok=True)
+    target = out_dir / STREAM_FILE
+    shutil.move(found[0], target)
+    return target
+
+
+def _check_stream_trailer(path: Path, end: str) -> None:
+    """Refuse a stream whose last payload is not the trailer for the run's *end*."""
+    last = ""
+    for payload in _debug_payloads(path):
+        last = payload
+    if last != f"e{end}":
+        raise VideoCaptureError(
+            f"the stream {path} ends with {last[:16]!r}, not the trailer 'e{end}'"
+        )
+
+
 def record_video(
     open_runner: Callable[[], AbstractContextManager[ScriptRunner]],
     out_dir: Path,
@@ -236,6 +287,7 @@ def record_video(
     provenance: Mapping[str, str],
     cap: int = VIDEO_MAX_FRAMES,
     emulator: EmulatorInfo | None = None,
+    stream: bool = False,
 ) -> VideoCapture:
     """Run the recording script, then file its AVI and log into *out_dir*.
 
@@ -245,15 +297,33 @@ def record_video(
     the AVI's hash, the layout read, the film ticks and *emulator* when given. A failure can
     leave the stripped AVI in *out_dir*.
 
+    With *stream* the script also streams the composed pictures through ``debugmsg``; the run's
+    debug log, found by a random header token, is moved to ``out_dir / stream.log`` (not decoded
+    here).
+
     Raises ``VideoCaptureError`` for an unusable recording: no or several ``.avi``, an AVI
     parsing error, a frame-count mismatch, a log the capture document refuses (frames that
-    skip, a film clock that falls) or a failed ``meta.json`` write. Runner and other filesystem
-    errors propagate.
+    skip, a film clock that falls), a stream with no, several or no trailer debug log, or a
+    failed ``meta.json`` write. Runner and other filesystem errors propagate.
     """
-    script = luagen.video_script(keys=keys, cap=cap, end_hold=END_HOLD_FRAMES, layout=layout)
+    token = secrets.token_hex(8) if stream else ""
+    script = luagen.video_script(
+        keys=keys,
+        cap=cap,
+        end_hold=END_HOLD_FRAMES,
+        layout=layout,
+        stream=stream,
+        token=token,
+    )
     with open_runner() as runner:
-        output = runner.run_script(script, timeout=VIDEO_TIMEOUT_SECONDS)
+        if stream:
+            output = runner.run_script(script, timeout=VIDEO_TIMEOUT_SECONDS, debug=True)
+        else:
+            output = runner.run_script(script, timeout=VIDEO_TIMEOUT_SECONDS)
     decoded = decode_video_log(output)
+    if stream:
+        stream_path = _stream_log(token, out_dir)
+        _check_stream_trailer(stream_path, decoded.end)
     recordings = sorted(recording_dir.glob("*.avi"))
     if len(recordings) != 1:
         raise VideoCaptureError(

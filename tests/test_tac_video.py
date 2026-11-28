@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from contextlib import nullcontext, suppress
 from typing import TYPE_CHECKING, Any
 
@@ -21,6 +22,7 @@ from stunt_reel.tac import automation, luagen, playone, video
 from stunt_reel.tac.automation import MockAutomation
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 pytestmark = pytest.mark.windows
@@ -330,3 +332,114 @@ def test_decode_video_log_raises_only_video_capture_error(output: dict[str, obje
     # TypeError would surface as a traceback instead of a refused capture.
     with suppress(video.VideoCaptureError):
         video.decode_video_log(output)
+
+
+def _stream_lines(token: str, *, end: str = "hold") -> list[str]:
+    """A synthetic stream: header, one composed and one held frame, trailer."""
+    return [f"h{token}:unpatched:1", "p101:00ff", "t102", f"e{end}"]
+
+
+def _write_log(log_dir: Path, name: str, payloads: list[str]) -> None:
+    body = "".join(f"[F:{n} T:0.5] debugmsg: {p}\n" for n, p in enumerate(payloads))
+    (log_dir / name).write_text(body, encoding="utf-8")
+
+
+def _record_stream(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    logs: Callable[[str], list[tuple[str, list[str]]]],
+) -> tuple[Path, MockAutomation]:
+    """Run record_video(stream=True); *logs* gives the debug logs the emulator would write."""
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    monkeypatch.setenv(automation.LOG_DIR_ENV, str(log_dir))
+    out_dir, recording = tmp_path / "out", tmp_path / "recording"
+    recording.mkdir()
+
+    def handler(lua: str) -> dict[str, Any]:
+        token = re.search(r'debugmsg\("h([0-9a-f]+):', lua)
+        assert token is not None
+        for name, payloads in logs(token.group(1)):
+            _write_log(log_dir, name, payloads)
+        frames = [bytes([n]) * 3 for n in range(3)]
+        (recording / "capture-0001.avi").write_bytes(build_avi(frames, []))
+        return _output()
+
+    mock = MockAutomation(handler)
+    video.record_video(
+        lambda: nullcontext(mock),
+        out_dir,
+        recording,
+        keys=KEYS,
+        layout=playone.UNPATCHED,
+        film=FILM,
+        provenance={},
+        stream=True,
+    )
+    return out_dir, mock
+
+
+def test_record_video_stream_moves_the_debug_log_to_stream_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tokens: list[str] = []
+
+    def log(token: str) -> list[tuple[str, list[str]]]:
+        tokens.append(token)
+        return [("lua-debug-20261128-010203-x.log", _stream_lines(token))]
+
+    out_dir, mock = _record_stream(tmp_path, monkeypatch, log)
+
+    assert mock.debug_flags == [True]
+    assert (out_dir / video.STREAM_FILE).read_text(encoding="utf-8") == "".join(
+        f"[F:{n} T:0.5] debugmsg: {p}\n" for n, p in enumerate(_stream_lines(tokens[0]))
+    )
+    assert not list((tmp_path / "logs").glob("*.log"))
+    assert (out_dir / VIDEO_FILE).exists()
+
+
+def test_a_stream_with_no_header_log_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with pytest.raises(video.VideoCaptureError, match="found 0"):
+        _record_stream(
+            tmp_path,
+            monkeypatch,
+            lambda _token: [("lua-debug-1.log", _stream_lines("0" * 16))],
+        )
+
+
+def test_two_logs_carrying_the_header_are_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with pytest.raises(video.VideoCaptureError, match="found 2"):
+        _record_stream(
+            tmp_path,
+            monkeypatch,
+            lambda token: [
+                ("lua-debug-1.log", _stream_lines(token)),
+                ("lua-debug-2.log", _stream_lines(token)),
+            ],
+        )
+
+
+def test_a_stream_without_its_trailer_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with pytest.raises(video.VideoCaptureError, match="trailer"):
+        _record_stream(
+            tmp_path,
+            monkeypatch,
+            lambda token: [("lua-debug-1.log", _stream_lines(token)[:-1])],
+        )
+
+
+def test_a_stream_trailer_must_match_the_run_end(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with pytest.raises(video.VideoCaptureError, match="trailer 'ehold'"):
+        _record_stream(
+            tmp_path,
+            monkeypatch,
+            lambda token: [("lua-debug-1.log", _stream_lines(token, end="capped"))],
+        )
