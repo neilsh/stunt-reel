@@ -9,7 +9,8 @@ Subcommands, each on one video capture directory (``<data root>/captures-video/<
   (``references.toml``): offset histogram, pixel-equal fractions, and each page as exact, split or band. Derives the
   columns first and writes the check into ``derived.json``. With ``--stream``, compare the stream
   (``stream.mkv``) instead, by palette index; this writes nothing.
-* ``replay <dir> <dir>``: say whether two recordings of one film are identical, AVI, log and stream.
+* ``replay <dir> <dir>``: say whether two recordings of one film are identical, AVI and log, and the stream's
+  recorded hashes when both have a ``stream.json``.
 * ``pairing``: test ADR 0057's pairing rule on the last frame of each slot_clock run, without a render (does a
   key name one picture) and, with ``--render <store>``, against a render store of the film. With ``--stream``,
   the pictures come from the stream and the AVI is not decoded.
@@ -169,8 +170,10 @@ def run_replay(first: Path, second: Path) -> int:
     replay = video_check.replay_report(first, second)
     report(f"AVI bytes identical: {replay.video_identical}")
     report(f"meta.json bytes identical: {replay.meta_identical}")
-    if replay.stream_identical is not None:
-        report(f"stream identical: {replay.stream_identical}")
+    if replay.stream_identical is None:
+        report("stream: not compared (a recording lacks stream.json)")
+    else:
+        report(f"stream hashes identical: {replay.stream_identical}")
     for column, index in replay.differing.items():
         report(f"differs: {column} (first at {index})")
     return 0 if replay.identical else 1

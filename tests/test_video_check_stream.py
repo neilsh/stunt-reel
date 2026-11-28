@@ -1,7 +1,7 @@
 """Offline tests for the stream checks of the video capture: pages, replay, pairing and the CLI.
 
 The streams are synthetic: each test encodes a log of seeded palette indices with
-``stunt_reel.tac.stream.encode_stream``, so ffmpeg is needed only where a test decodes one.
+``stunt_reel.tac.stream.encode_stream``, so ffmpeg is needed wherever a test encodes or decodes one.
 """
 
 from __future__ import annotations
@@ -327,8 +327,8 @@ def test_replay_prints_the_stream_line_only_when_both_recordings_have_one(
     script = load_video_derive()
     first, second = recordings
     assert script.run_replay(first, second) == 0
-    assert "stream identical" not in capsys.readouterr().out
+    assert "stream: not compared" in capsys.readouterr().out
     write_stream_json(first, "aa", 5)
     write_stream_json(second, "bb", 5)
     assert script.run_replay(first, second) == 1
-    assert "stream identical: False" in capsys.readouterr().out
+    assert "stream hashes identical: False" in capsys.readouterr().out
