@@ -115,3 +115,23 @@ Scratch scripts in the project files folder: `s2_gate.py` (pinned pages against 
 **Verdict.** Step 3 should treat a `p` line with flags 0 (neither) as held: repeat the last picture with flags 1 to 3, and count the held frames (85 of 1,907, 4.5%, on `CTRY`).
 
 **Lives in.** `research/playone-exe/capture-dosbox-automation.md` § 4.6.
+
+## 2026-11-28: Step 4, the stream in video-derive
+
+**Question.** Does a recording's stream reproduce the pinned `CTRY` pages by palette index, replay equal across two runs, and change what the ADR 0057 key test says about run-end pictures?
+
+**Method.** `reference-check ctry --stream`, `replay` and `pairing --stream` (new, built by a Haiku worker and checked here) on two stream recordings of `CTRY.FLM` (Patch 3, stubbed samples, `capture` profile; encoded with `stream-encode`), and `pairing` on the video of the first for comparison.
+`reference-check --stream` writes nothing; the stream compares indices, so it needs no palette mapping.
+`pairing --stream` takes each run-end row's picture from the stream, leaves out rows on held frames and keeps the palette-lag exclusion.
+
+**Result.** `[Bounded Observation]`, two recordings.
+
+* 121 of 121 pages equal the stream picture at offset 0; none is on a held frame; the working palette at that frame equals the page's on 121 of 121.
+* Two recordings: `capture.avi`, `meta.json` and the stream's raw SHA-256 equal.
+* Keys, last row of a run, run ends compared 1,031 on the stream (69 on held frames left out) and 1,100 on the video: `render_tick` 256 of 256 shared keys name more than one picture (video 296 of 296), `film_tick` 141 of 141 (video 180 of 180).
+  First row: `render_tick` 164 of 164 (video 179 of 179), `film_tick` 65 of 65 (video 78 of 78).
+* Not run: the render-SSIM half of `pairing` on the stream (no render store at hand), other films.
+
+**Verdict.** The ADR 0057 rule is neither confirmed nor changed: the key test still fails on whole pictures, so tears are not its cause; no adopted rule or score is touched.
+
+**Lives in.** `research/playone-exe/capture-dosbox-automation.md` § 4.6.
