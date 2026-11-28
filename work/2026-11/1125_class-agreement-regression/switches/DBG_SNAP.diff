@@ -1,0 +1,51 @@
+diff --git a/crates/stunt-render/src/pipeline.rs b/crates/stunt-render/src/pipeline.rs
+index 5d102e72..d5a88e6e 100644
+--- a/crates/stunt-render/src/pipeline.rs
++++ b/crates/stunt-render/src/pipeline.rs
+@@ -304,8 +304,44 @@ impl RenderPipelines {
+             immediate_size: 0,
+         });
+ 
+-        let shader_module =
+-            device.create_shader_module(wgpu::include_wgsl!("shaders/mode13h.wgsl"));
++        let mut dbg_src = include_str!("shaders/mode13h.wgsl").to_owned();
++        if let Ok(m) = std::env::var("DBG_SLIDE_RATIO") {
++            let old = "    if (!(t > 0.0) || t > PLANE_SLIDE_MAX) {\n        return clip;\n    }\n    return camera.rotation_proj";
++            assert!(dbg_src.contains(old));
++            let m: f32 = m.parse().expect("DBG_SLIDE_RATIO");
++            let new = format!(
++                "    if (!(t > 0.0) || length(on_ray * t) > {m:?} * length(eye.xyz)) {{\n        return clip;\n    }}\n    return camera.rotation_proj"
++            );
++            dbg_src = dbg_src.replace(old, &new);
++        }
++        if let Ok(v) = std::env::var("DBG_SNAP") {
++            if v == "off" {
++                for sig in [
++                    "fn playone_vertex(clip: vec4<f32>, eye: vec4<f32>, normal: vec3<f32>) -> vec4<f32> {",
++                    "fn snap_edges(clip: vec4<f32>, eye_y: f32) -> vec4<f32> {",
++                ] {
++                    assert!(dbg_src.contains(sig));
++                    dbg_src = dbg_src.replace(sig, &format!("{sig}\n    if (true) {{ return clip; }}"));
++                }
++            } else if let Some((bx, by)) = v.split_once(',') {
++                let bx: f32 = bx.parse().expect("DBG_SNAP bx");
++                let by: f32 = by.parse().expect("DBG_SNAP by");
++                let old = "trunc(offset) + 0.5;";
++                assert_eq!(dbg_src.matches(old).count(), 2);
++                dbg_src = dbg_src.replace(
++                    old,
++                    &format!(
++                        "trunc(offset) + vec2<f32>({:?}, {:?});",
++                        0.5 + bx / 256.0,
++                        0.5 + by / 256.0
++                    ),
++                );
++            }
++        }
++        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
++            label: Some("mode13h.wgsl"),
++            source: wgpu::ShaderSource::Wgsl(dbg_src.into()),
++        });
+         let vertex_buffers = [
+             Some(Self::vertex_buffer_layout()),
+             Some(Self::apex_buffer_layout()),
