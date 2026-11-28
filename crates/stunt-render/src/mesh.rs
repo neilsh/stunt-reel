@@ -901,8 +901,7 @@ fn apex_vertices<'a>(
                     .get(run)
                     .filter(|r| r.first as usize <= source)
                     .map_or(0, |r| u32::from(r.shape).saturating_add(1));
-                ApexVertex { apex, prop_shape,
-                }
+                ApexVertex { apex, prop_shape }
             })
     })
 }

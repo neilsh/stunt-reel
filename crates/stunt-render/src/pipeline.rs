@@ -589,6 +589,8 @@ mod tests {
         assert_eq!(layout.attributes[3].offset, 28);
         assert_eq!(layout.attributes[3].shader_location, 4);
         let apex = RenderPipelines::apex_buffer_layout();
-        assert_eq!(apex.array_stride, 16);
+        assert_eq!(apex.array_stride, 20);
+        assert_eq!(apex.attributes[1].offset, 16);
+        assert_eq!(apex.attributes[1].shader_location, 5);
     }
 }
